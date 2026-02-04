@@ -20,7 +20,7 @@ Krill is a safety-critical process orchestrator for robotics. It manages complex
 **Key behaviors:**
 - TUI is a view only—closing it does NOT stop the daemon
 - Explicit "Stop Daemon" button (with confirmation) required to stop daemon
-- Process naming: `{workspace}.{service}.{uuid}` (e.g., `pulsar.lidar.a1b2c3`)
+- Process naming: `{workspace}.{service}.{uuid}` (e.g., `robot.lidar.a1b2c3`)
 - Safe by default—shell commands validated, no pipes/subshells allowed
 - Docker type present in schema but returns "requires Pro" error
 
@@ -47,7 +47,7 @@ krill/
 ├── schemas/
 │   └── krill.schema.json   # JSON schema for editors
 ├── examples/
-│   └── pulsar.yaml         # Example config
+│   └── robot.yaml         # Example config
 └── tests/
     └── integration/
 ```
@@ -291,7 +291,7 @@ pub fn generate_process_name(workspace: &str, service: &str) -> String {
     let uuid = &Uuid::new_v4().to_string()[..6];
     format!("{}.{}.{}", workspace, service, uuid)
 }
-// Example: "pulsar.lidar.a1b2c3"
+// Example: "robot.lidar.a1b2c3"
 ```
 
 ### 3.2 Command Builder
@@ -503,7 +503,7 @@ async fn shutdown(&self) {
 **List View:**
 ```
 ┌─ krill ─────────────────────────────────────────────────────┐
-│ pulsar │ 4 services │ uptime 2h 34m                         │
+│ robot │ 4 services │ uptime 2h 34m                         │
 ├─────────────────────────────────────────────────────────────┤
 │  SERVICE      STATE      PID     RESTARTS                   │
 │▶ lidar        ●healthy   12345   0                          │
@@ -575,15 +575,15 @@ client.report_degraded("High latency");
 
 ---
 
-## Example Config (examples/pulsar.yaml)
+## Example Config (examples/robot.yaml)
 
 ```yaml
 version: "1"
-name: pulsar
+name: robot
 log_dir: ~/.krill/logs
 
 env:
-  ROBOT_ID: pulsar-001
+  ROBOT_ID: robot-001
 
 services:
   lidar:

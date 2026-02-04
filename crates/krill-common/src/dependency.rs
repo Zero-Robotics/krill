@@ -38,32 +38,76 @@ impl Dependency {
     }
 }
 
-// Custom deserialization to support "service healthy" string syntax
+// Custom deserialization to support both string and map formats
 impl<'de> Deserialize<'de> for Dependency {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        use serde::de::Error;
+        use serde::de::{Error, MapAccess, Visitor};
+        use std::fmt;
 
-        let s = String::deserialize(deserializer)?;
-        let parts: Vec<&str> = s.split_whitespace().collect();
+        struct DependencyVisitor;
 
-        match parts.as_slice() {
-            [service] => Ok(Dependency::Simple(service.to_string())),
-            [service, "started"] => Ok(Dependency::WithCondition {
-                service: service.to_string(),
-                condition: DependencyCondition::Started,
-            }),
-            [service, "healthy"] => Ok(Dependency::WithCondition {
-                service: service.to_string(),
-                condition: DependencyCondition::Healthy,
-            }),
-            _ => Err(D::Error::custom(format!(
-                "Invalid dependency format: '{}'. Expected 'service' or 'service condition'",
-                s
-            ))),
+        impl<'de> Visitor<'de> for DependencyVisitor {
+            type Value = Dependency;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a string like 'service' or 'service healthy', or a map like {service: healthy}")
+            }
+
+            // Handle string format: "lidar" or "lidar healthy"
+            fn visit_str<E>(self, value: &str) -> Result<Dependency, E>
+            where
+                E: Error,
+            {
+                let parts: Vec<&str> = value.split_whitespace().collect();
+
+                match parts.as_slice() {
+                    [service] => Ok(Dependency::Simple(service.to_string())),
+                    [service, "started"] => Ok(Dependency::WithCondition {
+                        service: service.to_string(),
+                        condition: DependencyCondition::Started,
+                    }),
+                    [service, "healthy"] => Ok(Dependency::WithCondition {
+                        service: service.to_string(),
+                        condition: DependencyCondition::Healthy,
+                    }),
+                    _ => Err(E::custom(format!(
+                        "Invalid dependency format: '{}'. Expected 'service' or 'service condition'",
+                        value
+                    ))),
+                }
+            }
+
+            // Handle map format: {lidar: healthy} or {lidar: started}
+            fn visit_map<M>(self, mut map: M) -> Result<Dependency, M::Error>
+            where
+                M: MapAccess<'de>,
+            {
+                if let Some((service, condition)) = map.next_entry::<String, String>()? {
+                    let cond = match condition.as_str() {
+                        "started" => DependencyCondition::Started,
+                        "healthy" => DependencyCondition::Healthy,
+                        _ => {
+                            return Err(M::Error::custom(format!(
+                                "Invalid condition '{}'. Expected 'started' or 'healthy'",
+                                condition
+                            )))
+                        }
+                    };
+
+                    Ok(Dependency::WithCondition {
+                        service,
+                        condition: cond,
+                    })
+                } else {
+                    Err(M::Error::custom("Expected a service name and condition"))
+                }
+            }
         }
+
+        deserializer.deserialize_any(DependencyVisitor)
     }
 }
 
@@ -124,6 +168,22 @@ mod tests {
         let dep: Dependency = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(dep.service_name(), "lidar");
         assert_eq!(dep.condition(), DependencyCondition::Healthy);
+    }
+
+    #[test]
+    fn test_deserialize_map_format() {
+        let yaml = r#"lidar: healthy"#;
+        let dep: Dependency = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(dep.service_name(), "lidar");
+        assert_eq!(dep.condition(), DependencyCondition::Healthy);
+    }
+
+    #[test]
+    fn test_deserialize_map_format_started() {
+        let yaml = r#"navigator: started"#;
+        let dep: Dependency = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(dep.service_name(), "navigator");
+        assert_eq!(dep.condition(), DependencyCondition::Started);
     }
 
     #[test]

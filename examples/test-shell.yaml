@@ -1,0 +1,71 @@
+version: "1"
+name: test-shell
+log_dir: ~/.krill/logs
+
+services:
+  counter1:
+    execute:
+      type: shell
+      command: bash examples/scripts/counter1.sh
+      working_dir: /Users/tommaso/Documents/dev/krill
+    policy:
+      restart: always
+    health_check:
+      type: heartbeat
+      timeout: 5s
+    critical: false
+
+  counter2:
+    execute:
+      type: shell
+      command: bash examples/scripts/counter2.sh
+      working_dir: /Users/tommaso/Documents/dev/krill
+    dependencies:
+      - counter1
+    policy:
+      restart: always
+    health_check:
+      type: heartbeat
+      timeout: 5s
+    critical: false
+
+  fast_counter:
+    execute:
+      type: shell
+      command: bash examples/scripts/fast_counter.sh
+      working_dir: /Users/tommaso/Documents/dev/krill
+    policy:
+      restart: always
+    health_check:
+      type: heartbeat
+      timeout: 5s
+    critical: false
+
+  logger:
+    execute:
+      type: shell
+      command: bash examples/scripts/logger.sh
+      working_dir: /Users/tommaso/Documents/dev/krill
+    dependencies:
+      - counter1
+      - counter2
+    policy:
+      restart: always
+    health_check:
+      type: heartbeat
+      timeout: 5s
+    critical: false
+
+  failing_service:
+    execute:
+      type: shell
+      command: bash examples/scripts/failing.sh
+      working_dir: /Users/tommaso/Documents/dev/krill
+    policy:
+      restart: on-failure
+      max_restarts: 3
+      restart_delay: 2s
+    health_check:
+      type: heartbeat
+      timeout: 5s
+    critical: false

@@ -143,8 +143,19 @@ async fn run_app(
     app: &mut App,
     server_rx: &mut mpsc::UnboundedReceiver<ServerMessage>,
 ) -> Result<()> {
+    let mut tick_interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
+
     loop {
         terminal.draw(|f| krill_tui::ui::render(f, app))?;
+
+        // Check for user input (non-blocking)
+        if event::poll(std::time::Duration::from_millis(0))? {
+            if let Event::Key(key) = event::read()? {
+                if !handle_input(app, key)? {
+                    break;
+                }
+            }
+        }
 
         // Handle events
         tokio::select! {
@@ -155,15 +166,9 @@ async fn run_app(
                 }
             }
 
-            // User input
-            _ = tokio::time::sleep(tokio::time::Duration::from_millis(100)) => {
-                if event::poll(std::time::Duration::from_millis(0))? {
-                    if let Event::Key(key) = event::read()? {
-                        if !handle_input(app, key)? {
-                            break;
-                        }
-                    }
-                }
+            // Tick for redraw
+            _ = tick_interval.tick() => {
+                // Just redraw
             }
         }
 

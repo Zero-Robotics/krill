@@ -31,6 +31,7 @@ pub struct IpcServer {
     socket_path: PathBuf,
     event_broadcast: broadcast::Sender<ServerMessage>,
     command_tx: mpsc::UnboundedSender<CommandRequest>,
+    snapshot_req_tx: mpsc::UnboundedSender<mpsc::UnboundedSender<HashMap<String, ServiceStatus>>>,
     shutdown: Arc<Mutex<bool>>,
 }
 
@@ -38,6 +39,9 @@ impl IpcServer {
     pub fn new(
         socket_path: PathBuf,
         command_tx: mpsc::UnboundedSender<CommandRequest>,
+        snapshot_req_tx: mpsc::UnboundedSender<
+            mpsc::UnboundedSender<HashMap<String, ServiceStatus>>,
+        >,
     ) -> Result<Self, IpcError> {
         // Remove existing socket if it exists
         if socket_path.exists() {
@@ -50,6 +54,7 @@ impl IpcServer {
             socket_path,
             event_broadcast,
             command_tx,
+            snapshot_req_tx,
             shutdown: Arc::new(Mutex::new(false)),
         })
     }
@@ -83,6 +88,7 @@ impl IpcServer {
                         stream,
                         self.event_broadcast.clone(),
                         self.command_tx.clone(),
+                        self.snapshot_req_tx.clone(),
                     );
 
                     tokio::spawn(async move {
@@ -128,6 +134,7 @@ impl IpcServer {
 struct ClientHandler {
     event_rx: broadcast::Receiver<ServerMessage>,
     command_tx: mpsc::UnboundedSender<CommandRequest>,
+    snapshot_req_tx: mpsc::UnboundedSender<mpsc::UnboundedSender<HashMap<String, ServiceStatus>>>,
     reader: BufReader<tokio::io::ReadHalf<UnixStream>>,
 }
 
@@ -136,6 +143,9 @@ impl ClientHandler {
         stream: UnixStream,
         event_broadcast: broadcast::Sender<ServerMessage>,
         command_tx: mpsc::UnboundedSender<CommandRequest>,
+        snapshot_req_tx: mpsc::UnboundedSender<
+            mpsc::UnboundedSender<HashMap<String, ServiceStatus>>,
+        >,
     ) -> (Self, tokio::io::WriteHalf<UnixStream>) {
         let event_rx = event_broadcast.subscribe();
         let (reader, writer) = tokio::io::split(stream);
@@ -144,6 +154,7 @@ impl ClientHandler {
         let handler = Self {
             event_rx,
             command_tx,
+            snapshot_req_tx,
             reader,
         };
 
@@ -271,12 +282,28 @@ impl ClientHandler {
 
             ClientMessage::GetSnapshot => {
                 debug!("Client requested snapshot");
-                // This will be handled by sending back current state
-                // For now, just acknowledge
-                let response = ServerMessage::Snapshot {
-                    services: HashMap::new(), // Will be filled by daemon
-                };
-                let _ = response_tx.send(response);
+
+                // Create a channel to receive the snapshot
+                let (snapshot_tx, mut snapshot_rx) = mpsc::unbounded_channel();
+
+                // Send request to orchestrator
+                if self.snapshot_req_tx.send(snapshot_tx).is_err() {
+                    error!("Failed to request snapshot from orchestrator");
+                    return Ok(());
+                }
+
+                // Wait for response (with timeout)
+                tokio::select! {
+                    snapshot = snapshot_rx.recv() => {
+                        if let Some(services) = snapshot {
+                            let response = ServerMessage::Snapshot { services };
+                            let _ = response_tx.send(response);
+                        }
+                    }
+                    _ = tokio::time::sleep(tokio::time::Duration::from_secs(1)) => {
+                        error!("Timeout waiting for snapshot");
+                    }
+                }
             }
         }
 

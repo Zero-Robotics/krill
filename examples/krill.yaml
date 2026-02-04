@@ -1,9 +1,9 @@
 version: "1"
-name: pulsar
+name: robot
 log_dir: ~/.krill/logs
 
 env:
-  ROBOT_ID: pulsar-001
+  ROBOT_ID: robot-001
   ROS_DOMAIN_ID: "42"
 
 services:
@@ -82,6 +82,7 @@ services:
     health_check:
       type: tcp
       port: 9090
+      timeout: 1s
 
   diagnostics:
     execute:

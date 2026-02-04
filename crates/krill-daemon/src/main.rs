@@ -66,6 +66,11 @@ async fn main() -> Result<()> {
     // Create command channel for IPC
     let (command_tx, mut command_rx) = mpsc::unbounded_channel();
 
+    // Create snapshot request channel
+    let (snapshot_req_tx, mut snapshot_req_rx) = mpsc::unbounded_channel::<
+        mpsc::UnboundedSender<HashMap<String, krill_common::ServiceStatus>>,
+    >();
+
     // Create orchestrator
     let orchestrator = Arc::new(
         Orchestrator::new(config, event_tx.clone()).context("Failed to create orchestrator")?,
@@ -73,7 +78,8 @@ async fn main() -> Result<()> {
 
     // Create IPC server
     let ipc_server = Arc::new(
-        IpcServer::new(args.socket.clone(), command_tx).context("Failed to create IPC server")?,
+        IpcServer::new(args.socket.clone(), command_tx, snapshot_req_tx)
+            .context("Failed to create IPC server")?,
     );
 
     // Spawn IPC server task
@@ -115,6 +121,15 @@ async fn main() -> Result<()> {
         }
     });
 
+    // Spawn snapshot request handling task
+    let orchestrator_clone = Arc::clone(&orchestrator);
+    tokio::spawn(async move {
+        while let Some(response_tx) = snapshot_req_rx.recv().await {
+            let snapshot = orchestrator_clone.get_snapshot().await;
+            let _ = response_tx.send(snapshot);
+        }
+    });
+
     // Start all services
     info!("Starting all services...");
     if let Err(e) = orchestrator.start_all().await {
@@ -126,14 +141,20 @@ async fn main() -> Result<()> {
     info!("Daemon running. Press Ctrl+C to stop.");
 
     // Wait for shutdown signal
-    let shutdown_signal = async {
-        signal::ctrl_c()
-            .await
-            .expect("Failed to install Ctrl+C handler");
-        info!("Received Ctrl+C, initiating graceful shutdown");
-    };
-
-    shutdown_signal.await;
+    tokio::select! {
+        result = signal::ctrl_c() => {
+            match result {
+                Ok(()) => info!("Received Ctrl+C signal, initiating graceful shutdown"),
+                Err(e) => error!("Failed to listen for Ctrl+C: {}", e),
+            }
+        }
+        _ = command_handle => {
+            info!("Command handler stopped, initiating shutdown");
+        }
+        _ = ipc_handle => {
+            error!("IPC handler stopped unexpectedly");
+        }
+    }
 
     // Shutdown
     info!("Shutting down daemon...");
@@ -144,8 +165,8 @@ async fn main() -> Result<()> {
 
     ipc_server.shutdown().await;
 
-    // Wait for tasks to complete
-    let _ = tokio::join!(ipc_handle, event_handle, command_handle);
+    // Cancel event forwarding task
+    event_handle.abort();
 
     info!("Daemon stopped");
     Ok(())

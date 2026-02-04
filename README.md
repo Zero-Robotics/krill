@@ -63,10 +63,10 @@ cargo build --workspace --release
 
 ```bash
 # Start the daemon with a configuration file
-krill-daemon --config examples/pulsar.yaml
+krill-daemon --config examples/robot.yaml
 
 # Or with custom socket and log directory
-krill-daemon --config pulsar.yaml --socket /var/run/krill.sock --log-dir /var/log/krill
+krill-daemon --config robot.yaml --socket /var/run/krill.sock --log-dir /var/log/krill
 ```
 
 ### Using the TUI
@@ -83,11 +83,11 @@ krill-tui --socket /var/run/krill.sock
 
 ```yaml
 version: "1"
-name: pulsar
+name: robot
 log_dir: ~/.krill/logs
 
 env:
-  ROBOT_ID: pulsar-001
+  ROBOT_ID: robot-001
   ROS_DOMAIN_ID: "42"
 
 services:
@@ -219,7 +219,7 @@ krill/
 ├── schemas/
 │   └── krill.schema.json  # JSON schema for configs
 ├── examples/
-│   └── pulsar.yaml        # Example configuration
+│   └── robot.yaml        # Example configuration
 └── tests/
     └── integration/       # Integration tests
 ```
