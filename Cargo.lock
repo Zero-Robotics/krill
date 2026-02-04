@@ -627,8 +627,6 @@ dependencies = [
 name = "krill-sdk-rust"
 version = "0.1.0"
 dependencies = [
- "anyhow",
- "dirs",
  "krill-common",
  "serde",
  "serde_json",
@@ -641,8 +639,8 @@ name = "krill-tui"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "clap",
  "crossterm",
- "dirs",
  "krill-common",
  "ratatui",
  "serde",
