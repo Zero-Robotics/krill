@@ -1,0 +1,17 @@
+[package]
+name = "krill-tui"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+krill-common = { path = "../krill-common" }
+# Terminal UI
+ratatui = "0.26"
+
+# Async for communicating with Daemon
+tokio = { version = "1.36", features = ["rt-multi-thread", "macros", "net"] }
+serde_json = "1.0"
+futures = "0.3"
+
+# Formatting helpers
+tui-logger = "0.11" # Helps pipe daemon logs into ratatui widgets

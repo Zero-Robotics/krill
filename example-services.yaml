@@ -1,0 +1,107 @@
+version: "1"
+services:
+  # Lidar driver - a critical sensor that must be healthy
+  lidar:
+    command: "/usr/bin/lidar_driver --port 9090"
+    stop_cmd: "/usr/bin/lidar_driver --stop"
+    restart_policy:
+      condition: "on-failure"
+      max_attempts: 3
+      delay_sec: 2
+    critical: true
+    health_check:
+      type: "heartbeat"
+      timeout_sec: 5  # Heartbeats expected at 1Hz, 5s timeout allows for jitter
+    environment:
+      LOG_LEVEL: "INFO"
+      SENSOR_ID: "lidar_001"
+    working_directory: "/var/lib/krill"
+
+  # Camera service with TCP health check
+  camera:
+    command: "/usr/bin/camera_driver --config /etc/camera.yaml"
+    stop_cmd: "/usr/bin/camera_driver --stop"
+    restart_policy:
+      condition: "always"  # Always restart if fails
+      max_attempts: 5
+      delay_sec: 1
+    critical: false
+    health_check:
+      type: "tcp"
+      port: 9091
+      timeout_sec: 3
+    dependencies:
+      - lidar: { condition: "started" }  # Camera needs lidar to at least be started
+
+  # Navigator - depends on sensors being healthy
+  navigator:
+    command: "/usr/bin/navigator --map /etc/map.yaml"
+    stop_cmd: "/usr/bin/navigator --stop"
+    restart_policy:
+      condition: "on-failure"
+      max_attempts: 10  # Navigator can be restarted many times
+      delay_sec: 1
+    critical: true  # Navigator failure triggers emergency stop
+    health_check:
+      type: "heartbeat"
+      timeout_sec: 10  # Higher-level logic can have longer timeouts
+    dependencies:
+      - lidar: { condition: "healthy" }  # Need good lidar data
+      - camera: { condition: "healthy" } # Need good camera data
+    environment:
+      NAV_AGGRESSIVENESS: "0.7"
+      MAX_SPEED: "2.0"
+
+  # Mission planner - high-level logic
+  mission_planner:
+    command: "/usr/bin/mission_planner --goals /etc/goals.json"
+    restart_policy:
+      condition: "never"  # If planner fails, don't auto-restart
+    critical: false
+    health_check:
+      type: "command"
+      command: "/usr/bin/check_planner_health"
+      timeout_sec: 30
+    dependencies:
+      - navigator: { condition: "healthy" }
+
+  # Web UI - non-critical, depends on planner
+  web_ui:
+    command: "/usr/bin/web_server --port 8080"
+    restart_policy:
+      condition: "on-failure"
+      max_attempts: 3
+      delay_sec: 5
+    critical: false
+    health_check:
+      type: "tcp"
+      port: 8080
+      timeout_sec: 5
+    dependencies:
+      - mission_planner: { condition: "started" }
+    environment:
+      WEB_HOST: "0.0.0.0"
+      WEB_PORT: "8080"
+
+  # Data logger - utility service, no dependencies
+  data_logger:
+    command: "/usr/bin/data_logger --output /var/log/krill/data.db"
+    restart_policy:
+      condition: "always"
+      max_attempts: 999  # Essentially infinite retries
+      delay_sec: 10
+    critical: false
+    health_check:
+      type: "command"
+      command: "/usr/bin/check_disk_space"
+      timeout_sec: 60
+
+  # System monitor - internal monitoring
+  system_monitor:
+    command: "/usr/bin/system_monitor --interval 5"
+    critical: false
+    # No health check - relies on process liveness only
+    # No restart policy - if it fails, just leave it stopped
+    environment:
+      MONITOR_INTERVAL: "5"
+      ALERT_EMAIL: "admin@example.com"

@@ -1,0 +1,32 @@
+[package]
+name = "krill-daemon"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+krill-common = { path = "../krill-common" }
+# Async Runtime
+tokio = { version = "1.36", features = ["full"] }
+tokio-util = { version = "0.7", features = ["codec"] }
+
+# Process & System Management
+nix = { version = "0.27", features = ["process", "signal"] }
+command-group = { version = "2.1", features = ["with-tokio"] } # For killing entire process trees (zombie prevention)
+
+# Networking & IPC
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+futures-util = "0.3"
+
+# Time & UUID
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+
+# Observability
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# CLI & Configuration
+clap = { version = "4.4", features = ["derive"] }
+dirs = "5.0"
+shell-words = "1.1"
