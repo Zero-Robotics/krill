@@ -1,183 +1,152 @@
+// Krill Daemon - Main entry point
+
+use anyhow::{Context, Result};
 use clap::Parser;
-use krill_common::schema::load_config_from_file;
+use krill_common::KrillConfig;
+use krill_daemon::{IpcServer, LogManager, Orchestrator};
 use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::signal;
-use tracing::{Level, error, info};
+use tokio::sync::mpsc;
+use tracing::{error, info, warn};
+use tracing_subscriber::{fmt, EnvFilter};
 
-mod daemon;
-mod dag;
-mod health;
-mod ipc;
-mod process;
-mod safety;
-mod supervisor;
-
-use daemon::Daemon;
-
-/// Mission Control Supervisor for robot services
-///
-/// This daemon orchestrates the lifecycle of every program on the robot,
-/// providing process supervision, DAG-based orchestration, and safety
-/// interception for critical failures.
 #[derive(Parser, Debug)]
-#[command(version, about, long_about = None)]
+#[command(name = "krill-daemon")]
+#[command(about = "Krill process orchestrator daemon", long_about = None)]
 struct Args {
-    /// Path to the service configuration YAML file
-    #[arg(short, long, default_value = "/etc/krill/services.yaml")]
+    /// Path to configuration file
+    #[arg(short, long, value_name = "FILE")]
     config: PathBuf,
 
-    /// Path to the PID file
-    #[arg(short, long, default_value = "/var/run/krill.pid")]
-    pid_file: PathBuf,
+    /// Log directory (overrides config)
+    #[arg(long, value_name = "DIR")]
+    log_dir: Option<PathBuf>,
 
-    /// Path to the Unix domain socket for IPC
-    #[arg(short, long, default_value = "/tmp/krill.sock")]
+    /// IPC socket path
+    #[arg(long, default_value = "/tmp/krill.sock")]
     socket: PathBuf,
 
-    /// Log directory for service outputs
-    #[arg(short, long, default_value = "~/.krill/logs")]
-    log_dir: PathBuf,
-
-    /// Enable debug logging
-    #[arg(short, long, default_value_t = false)]
-    debug: bool,
-
-    /// Dry run: parse configuration but don't start services
-    #[arg(long, default_value_t = false)]
-    dry_run: bool,
+    /// Verbose logging
+    #[arg(short, long)]
+    verbose: bool,
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Parse command line arguments
+async fn main() -> Result<()> {
     let args = Args::parse();
 
-    // Initialize logging
-    let log_level = if args.debug {
-        Level::DEBUG
+    // Initialize tracing
+    let filter = if args.verbose {
+        EnvFilter::new("debug")
     } else {
-        Level::INFO
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"))
     };
 
-    tracing_subscriber::fmt()
-        .with_max_level(log_level)
-        .with_target(true)
-        .with_thread_ids(true)
-        .with_thread_names(true)
-        .with_ansi(false)
-        .init();
+    fmt().with_env_filter(filter).with_target(false).init();
 
-    info!(
-        "Starting Krill Mission Control Supervisor v{}",
-        env!("CARGO_PKG_VERSION")
+    info!("Starting krill-daemon");
+
+    // Load configuration
+    info!("Loading configuration from {:?}", args.config);
+    let config = KrillConfig::from_file(&args.config).context("Failed to load configuration")?;
+
+    info!("Loaded workspace: {}", config.name);
+    info!("Services: {}", config.services.len());
+
+    // Initialize logging system
+    let log_dir = args.log_dir.or(config.log_dir.clone());
+    let log_manager = LogManager::new(log_dir).context("Failed to initialize log manager")?;
+
+    info!("Logs directory: {:?}", log_manager.session_dir());
+
+    // Create event channel
+    let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+
+    // Create command channel for IPC
+    let (command_tx, mut command_rx) = mpsc::unbounded_channel();
+
+    // Create orchestrator
+    let orchestrator = Arc::new(
+        Orchestrator::new(config, event_tx.clone()).context("Failed to create orchestrator")?,
     );
-    info!("Configuration file: {}", args.config.display());
-    info!("Socket path: {}", args.socket.display());
 
-    // Load and validate configuration
-    let config = match load_config_from_file(&args.config) {
-        Ok(config) => {
-            info!("Configuration loaded successfully");
-            info!("Services defined: {}", config.services.len());
-            for service_name in config.services.keys() {
-                info!("  - {}", service_name);
+    // Create IPC server
+    let ipc_server = Arc::new(
+        IpcServer::new(args.socket.clone(), command_tx).context("Failed to create IPC server")?,
+    );
+
+    // Spawn IPC server task
+    let ipc_server_clone = Arc::clone(&ipc_server);
+    let ipc_handle = tokio::spawn(async move {
+        if let Err(e) = ipc_server_clone.start().await {
+            error!("IPC server error: {}", e);
+        }
+    });
+
+    // Spawn event forwarding task
+    let ipc_server_clone = Arc::clone(&ipc_server);
+    let event_handle = tokio::spawn(async move {
+        while let Some((service, status)) = event_rx.recv().await {
+            info!("Event: {} -> {:?}", service, status);
+            ipc_server_clone.broadcast_event(service, status);
+        }
+    });
+
+    // Spawn command handling task
+    let orchestrator_clone = Arc::clone(&orchestrator);
+    let command_handle = tokio::spawn(async move {
+        while let Some((action, target)) = command_rx.recv().await {
+            info!("Command: {:?} for {:?}", action, target);
+
+            use krill_common::CommandAction;
+            match action {
+                CommandAction::StopDaemon => {
+                    info!("Received stop daemon command");
+                    if let Err(e) = orchestrator_clone.shutdown().await {
+                        error!("Shutdown error: {}", e);
+                    }
+                    break;
+                }
+                _ => {
+                    warn!("Command handling not yet implemented: {:?}", action);
+                }
             }
-            config
         }
-        Err(e) => {
-            error!("Failed to load configuration: {}", e);
-            std::process::exit(1);
-        }
+    });
+
+    // Start all services
+    info!("Starting all services...");
+    if let Err(e) = orchestrator.start_all().await {
+        error!("Failed to start services: {}", e);
+        return Err(e.into());
+    }
+
+    info!("All services started successfully");
+    info!("Daemon running. Press Ctrl+C to stop.");
+
+    // Wait for shutdown signal
+    let shutdown_signal = async {
+        signal::ctrl_c()
+            .await
+            .expect("Failed to install Ctrl+C handler");
+        info!("Received Ctrl+C, initiating graceful shutdown");
     };
 
-    if args.dry_run {
-        info!("Dry run completed successfully");
-        return Ok(());
+    shutdown_signal.await;
+
+    // Shutdown
+    info!("Shutting down daemon...");
+
+    if let Err(e) = orchestrator.shutdown().await {
+        error!("Error during shutdown: {}", e);
     }
 
-    // Create daemon instance
-    let socket_path = args.socket.clone();
-    let daemon = match Daemon::new(config, args.pid_file, socket_path, args.log_dir).await {
-        Ok(daemon) => daemon,
-        Err(e) => {
-            error!("Failed to initialize daemon: {}", e);
-            std::process::exit(1);
-        }
-    };
+    ipc_server.shutdown().await;
 
-    // Wrap in Arc for sharing between components
-    let daemon = std::sync::Arc::new(daemon);
+    // Wait for tasks to complete
+    let _ = tokio::join!(ipc_handle, event_handle, command_handle);
 
-    // Create supervisor with Arc clone
-    // Note: supervisor::Supervisor::new needs to be updated to accept Arc<Daemon>
-    let daemon_for_supervisor = std::sync::Arc::clone(&daemon);
-    let mut supervisor = match supervisor::Supervisor::new(daemon_for_supervisor).await {
-        Ok(supervisor) => supervisor,
-        Err(e) => {
-            error!("Failed to initialize supervisor: {}", e);
-            std::process::exit(1);
-        }
-    };
-
-    // Start supervisor
-    if let Err(e) = supervisor.start().await {
-        error!("Failed to start supervisor: {}", e);
-        std::process::exit(1);
-    }
-
-    // Start IPC server with shared daemon reference
-    let ipc_handle = match ipc::start_ipc_server(daemon).await {
-        Ok(handle) => {
-            info!("IPC server started on {}", args.socket.display());
-            handle
-        }
-        Err(e) => {
-            error!("Failed to start IPC server: {}", e);
-            std::process::exit(1);
-        }
-    };
-
-    // Wait for shutdown signals
-    match signal::ctrl_c().await {
-        Ok(_) => {
-            info!("Received shutdown signal");
-        }
-        Err(e) => {
-            error!("Failed to install Ctrl+C handler: {}", e);
-            std::process::exit(1);
-        }
-    }
-
-    // Graceful shutdown
-    info!("Initiating graceful shutdown...");
-
-    // Stop IPC server
-    if let Err(e) = ipc_handle.shutdown().await {
-        error!("Error shutting down IPC server: {}", e);
-    }
-
-    // Stop supervisor and all services
-    if let Err(e) = supervisor.shutdown().await {
-        error!("Error during supervisor shutdown: {}", e);
-    }
-
-    info!("Krill Mission Control Supervisor stopped");
-    Ok(())
-}
-
-/// Handle OS signals for graceful shutdown
-async fn handle_signals() -> Result<(), std::io::Error> {
-    let mut term = signal::unix::signal(signal::unix::SignalKind::terminate())?;
-    let mut int = signal::unix::signal(signal::unix::SignalKind::interrupt())?;
-
-    tokio::select! {
-        _ = term.recv() => {
-            info!("Received SIGTERM");
-        }
-        _ = int.recv() => {
-            info!("Received SIGINT");
-        }
-    }
-
+    info!("Daemon stopped");
     Ok(())
 }

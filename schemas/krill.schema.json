@@ -1,0 +1,276 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Krill Configuration",
+  "description": "Configuration schema for Krill process orchestrator",
+  "type": "object",
+  "required": ["version", "name", "services"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Schema version",
+      "const": "1"
+    },
+    "name": {
+      "type": "string",
+      "description": "Workspace name (used in process naming)",
+      "pattern": "^[a-zA-Z0-9_-]+$"
+    },
+    "log_dir": {
+      "type": "string",
+      "description": "Directory for log files (supports ~ expansion)"
+    },
+    "env": {
+      "type": "object",
+      "description": "Global environment variables",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "services": {
+      "type": "object",
+      "description": "Service definitions",
+      "additionalProperties": {
+        "$ref": "#/definitions/Service"
+      }
+    }
+  },
+  "definitions": {
+    "Service": {
+      "type": "object",
+      "required": ["execute"],
+      "properties": {
+        "execute": {
+          "$ref": "#/definitions/ExecuteConfig"
+        },
+        "dependencies": {
+          "type": "array",
+          "description": "Services this service depends on",
+          "items": {
+            "oneOf": [
+              {
+                "type": "string",
+                "description": "Simple dependency (waits for started)"
+              },
+              {
+                "type": "object",
+                "description": "Dependency with condition",
+                "additionalProperties": {
+                  "type": "string",
+                  "enum": ["started", "healthy"]
+                }
+              }
+            ]
+          }
+        },
+        "critical": {
+          "type": "boolean",
+          "description": "If true, failure triggers emergency stop of all services",
+          "default": false
+        },
+        "gpu": {
+          "type": "boolean",
+          "description": "If true, validates GPU availability before starting",
+          "default": false
+        },
+        "health_check": {
+          "$ref": "#/definitions/HealthCheck"
+        },
+        "policy": {
+          "$ref": "#/definitions/Policy"
+        }
+      }
+    },
+    "ExecuteConfig": {
+      "type": "object",
+      "required": ["type"],
+      "oneOf": [
+        {
+          "properties": {
+            "type": { "const": "pixi" },
+            "task": {
+              "type": "string",
+              "description": "Pixi task name"
+            },
+            "environment": {
+              "type": "string",
+              "description": "Pixi environment (defaults to service name)"
+            },
+            "stop_task": {
+              "type": "string",
+              "description": "Optional graceful stop task"
+            },
+            "working_dir": {
+              "type": "string",
+              "description": "Working directory"
+            }
+          },
+          "required": ["type", "task"]
+        },
+        {
+          "properties": {
+            "type": { "const": "ros2" },
+            "package": {
+              "type": "string",
+              "description": "ROS2 package name"
+            },
+            "launch_file": {
+              "type": "string",
+              "description": "Launch file name"
+            },
+            "launch_args": {
+              "type": "object",
+              "description": "Launch arguments",
+              "additionalProperties": { "type": "string" }
+            },
+            "stop_task": {
+              "type": "string",
+              "description": "Optional pixi stop task"
+            },
+            "working_dir": {
+              "type": "string"
+            }
+          },
+          "required": ["type", "package", "launch_file"]
+        },
+        {
+          "properties": {
+            "type": { "const": "shell" },
+            "command": {
+              "type": "string",
+              "description": "Shell command (no pipes, redirections, or subshells allowed)"
+            },
+            "stop_command": {
+              "type": "string",
+              "description": "Optional graceful stop command"
+            },
+            "working_dir": {
+              "type": "string"
+            }
+          },
+          "required": ["type", "command"]
+        },
+        {
+          "properties": {
+            "type": { "const": "docker" },
+            "image": {
+              "type": "string",
+              "description": "Docker image name"
+            },
+            "volumes": {
+              "type": "array",
+              "description": "Volume mounts",
+              "items": { "type": "string" }
+            },
+            "ports": {
+              "type": "array",
+              "description": "Port mappings",
+              "items": { "type": "string" }
+            },
+            "privileged": {
+              "type": "boolean",
+              "default": false
+            },
+            "network": {
+              "type": "string",
+              "description": "Network mode"
+            }
+          },
+          "required": ["type", "image"]
+        }
+      ]
+    },
+    "HealthCheck": {
+      "type": "object",
+      "required": ["type"],
+      "oneOf": [
+        {
+          "properties": {
+            "type": { "const": "heartbeat" },
+            "timeout": {
+              "type": "string",
+              "description": "Timeout duration (e.g., '2s', '500ms')",
+              "pattern": "^\\d+(ms|s|m|h)$"
+            }
+          },
+          "required": ["type", "timeout"]
+        },
+        {
+          "properties": {
+            "type": { "const": "tcp" },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "timeout": {
+              "type": "string",
+              "pattern": "^\\d+(ms|s|m|h)$"
+            }
+          },
+          "required": ["type", "port"]
+        },
+        {
+          "properties": {
+            "type": { "const": "http" },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "path": {
+              "type": "string",
+              "default": "/health"
+            },
+            "expected_status": {
+              "type": "integer",
+              "default": 200
+            }
+          },
+          "required": ["type", "port"]
+        },
+        {
+          "properties": {
+            "type": { "const": "script" },
+            "command": {
+              "type": "string",
+              "description": "Health check command (exit 0 = healthy)"
+            },
+            "timeout": {
+              "type": "string",
+              "pattern": "^\\d+(ms|s|m|h)$"
+            }
+          },
+          "required": ["type", "command"]
+        }
+      ]
+    },
+    "Policy": {
+      "type": "object",
+      "properties": {
+        "restart": {
+          "type": "string",
+          "enum": ["never", "always", "on-failure"],
+          "default": "never"
+        },
+        "max_restarts": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "0 = unlimited",
+          "default": 0
+        },
+        "restart_delay": {
+          "type": "string",
+          "description": "Delay between restarts",
+          "pattern": "^\\d+(ms|s|m|h)$",
+          "default": "1s"
+        },
+        "stop_timeout": {
+          "type": "string",
+          "description": "Timeout before SIGKILL",
+          "pattern": "^\\d+(ms|s|m|h)$",
+          "default": "10s"
+        }
+      }
+    }
+  }
+}

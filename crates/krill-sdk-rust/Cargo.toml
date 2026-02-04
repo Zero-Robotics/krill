@@ -1,21 +1,17 @@
 [package]
-name = "krill-tui"
+name = "krill-sdk-rust"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
-[[bin]]
-name = "krill-tui"
-path = "src/main.rs"
+[lib]
+path = "src/lib.rs"
 
 [dependencies]
 krill-common = { path = "../krill-common" }
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+thiserror.workspace = true
 anyhow.workspace = true
-tracing.workspace = true
-tracing-subscriber.workspace = true
-ratatui.workspace = true
-crossterm.workspace = true
 dirs.workspace = true
