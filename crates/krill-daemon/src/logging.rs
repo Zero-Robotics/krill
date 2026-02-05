@@ -2,11 +2,17 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, VecDeque};
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use thiserror::Error;
+use tokio::sync::RwLock;
 use tracing::info;
+
+/// Maximum log lines to keep in memory per service
+const MAX_LOG_LINES: usize = 5000;
 
 #[derive(Debug, Error)]
 pub enum LogError {
@@ -34,6 +40,149 @@ pub enum LogLevel {
     Error,
 }
 
+/// Thread-safe log storage with file persistence
+pub struct LogStore {
+    /// In-memory log buffer per service
+    logs: RwLock<HashMap<String, VecDeque<String>>>,
+    /// Session directory for log files
+    session_dir: PathBuf,
+    /// Timeline file handle
+    timeline_file: RwLock<File>,
+}
+
+impl LogStore {
+    pub fn new(base_dir: Option<PathBuf>) -> Result<Arc<Self>, LogError> {
+        // Default to ~/.krill/logs if not specified
+        let base_dir = base_dir.unwrap_or_else(|| {
+            let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+            home.join(".krill").join("logs")
+        });
+
+        // Create session directory with timestamp
+        let timestamp = Utc::now().format("%Y%m%d-%H%M%S");
+        let session_dir = base_dir.join(format!("session-{}", timestamp));
+
+        fs::create_dir_all(&session_dir)?;
+        info!("Created log session directory: {:?}", session_dir);
+
+        // Create timeline.jsonl file
+        let timeline_path = session_dir.join("timeline.jsonl");
+        let timeline_file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&timeline_path)?;
+
+        // Create krill.log file for daemon logs
+        let daemon_log_path = session_dir.join("krill.log");
+        File::create(daemon_log_path)?;
+
+        Ok(Arc::new(Self {
+            logs: RwLock::new(HashMap::new()),
+            session_dir,
+            timeline_file: RwLock::new(timeline_file),
+        }))
+    }
+
+    /// Add a log line for a service
+    pub async fn add_log(&self, service: &str, line: String) {
+        // Add to in-memory buffer
+        {
+            let mut logs = self.logs.write().await;
+            let service_logs = logs
+                .entry(service.to_string())
+                .or_insert_with(VecDeque::new);
+            service_logs.push_back(line.clone());
+
+            // Trim if too many lines
+            while service_logs.len() > MAX_LOG_LINES {
+                service_logs.pop_front();
+            }
+        }
+
+        // Write to file
+        let log_path = self.session_dir.join(format!("{}.log", service));
+        if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(&log_path) {
+            let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S%.3f");
+            let _ = writeln!(file, "[{}] {}", timestamp, line);
+        }
+
+        // Write to timeline
+        {
+            let mut timeline = self.timeline_file.write().await;
+            let event = TimelineEvent {
+                timestamp: Utc::now(),
+                service: service.to_string(),
+                level: LogLevel::Info,
+                message: line,
+            };
+            if let Ok(json) = serde_json::to_string(&event) {
+                let _ = writeln!(*timeline, "{}", json);
+                let _ = timeline.flush();
+            }
+        }
+    }
+
+    /// Get log history for a service (or all services if None)
+    pub async fn get_logs(&self, service: Option<&str>, limit: usize) -> Vec<String> {
+        let logs = self.logs.read().await;
+
+        match service {
+            Some(svc) => logs
+                .get(svc)
+                .map(|v| v.iter().rev().take(limit).rev().cloned().collect())
+                .unwrap_or_default(),
+            None => {
+                // Return interleaved logs from all services (simplified: just concatenate)
+                let mut all_logs: Vec<String> = Vec::new();
+                for (svc, svc_logs) in logs.iter() {
+                    for line in svc_logs.iter() {
+                        all_logs.push(format!("[{}] {}", svc, line));
+                    }
+                }
+                // Take last N lines
+                let skip = all_logs.len().saturating_sub(limit);
+                all_logs.into_iter().skip(skip).collect()
+            }
+        }
+    }
+
+    /// Get session directory path
+    pub fn session_dir(&self) -> &Path {
+        &self.session_dir
+    }
+
+    /// Log a daemon event
+    pub async fn log_daemon(&self, level: LogLevel, message: &str) {
+        let daemon_log_path = self.session_dir.join("krill.log");
+        if let Ok(mut file) = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(daemon_log_path)
+        {
+            let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S%.3f");
+            let _ = writeln!(file, "[{}] {:?} {}", timestamp, level, message);
+            let _ = file.flush();
+        }
+
+        // Also write to timeline
+        {
+            let mut timeline = self.timeline_file.write().await;
+            let event = TimelineEvent {
+                timestamp: Utc::now(),
+                service: "krill-daemon".to_string(),
+                level,
+                message: message.to_string(),
+            };
+            if let Ok(json) = serde_json::to_string(&event) {
+                let _ = writeln!(*timeline, "{}", json);
+                let _ = timeline.flush();
+            }
+        }
+    }
+}
+
+// Keep the old LogManager for backward compatibility but mark as deprecated
+#[deprecated(note = "Use LogStore instead")]
 pub struct LogManager {
     session_dir: PathBuf,
     timeline_file: File,

@@ -5,6 +5,7 @@ members = [
     "crates/krill-daemon",
     "crates/krill-tui",
     "crates/krill-sdk-rust",
+    "crates/krill-cli",
 ]
 
 [workspace.package]

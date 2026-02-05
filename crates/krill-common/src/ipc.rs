@@ -22,6 +22,9 @@ pub enum ClientMessage {
         logs: Option<String>,
     },
     GetSnapshot,
+    GetLogs {
+        service: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -67,6 +70,10 @@ pub enum ServerMessage {
     Snapshot {
         services: HashMap<String, ServiceSnapshot>,
     },
+    LogHistory {
+        service: Option<String>,
+        lines: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -76,6 +83,8 @@ pub struct ServiceSnapshot {
     pub uptime: Option<std::time::Duration>,
     pub restart_count: u32,
     pub last_error: Option<String>,
+    pub namespace: String,
+    pub executor_type: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -143,6 +152,8 @@ mod tests {
                 uptime: Some(std::time::Duration::from_secs(300)),
                 restart_count: 0,
                 last_error: None,
+                namespace: "test-workspace".to_string(),
+                executor_type: "pixi".to_string(),
             },
         );
 

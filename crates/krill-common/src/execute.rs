@@ -66,6 +66,35 @@ fn default_protocol() -> String {
     "tcp".to_string()
 }
 
+impl ExecuteConfig {
+    pub fn executor_type(&self) -> &'static str {
+        match self {
+            ExecuteConfig::Pixi { .. } => "pixi",
+            ExecuteConfig::Ros2 { .. } => "ros2",
+            ExecuteConfig::Shell { .. } => "shell",
+            ExecuteConfig::Docker { .. } => "docker",
+        }
+    }
+
+    /// Resolve relative working_dir paths against a base directory
+    pub fn resolve_working_dir(&mut self, base_dir: &std::path::Path) {
+        let resolve = |working_dir: &mut Option<PathBuf>| {
+            if let Some(ref mut wd) = working_dir {
+                if wd.is_relative() {
+                    *wd = base_dir.join(&wd);
+                }
+            }
+        };
+
+        match self {
+            ExecuteConfig::Pixi { working_dir, .. } => resolve(working_dir),
+            ExecuteConfig::Ros2 { working_dir, .. } => resolve(working_dir),
+            ExecuteConfig::Shell { working_dir, .. } => resolve(working_dir),
+            ExecuteConfig::Docker { .. } => {} // Docker doesn't have working_dir
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

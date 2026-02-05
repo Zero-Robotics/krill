@@ -7,6 +7,7 @@ use krill_common::{
 use std::collections::HashMap;
 use std::sync::Arc;
 use thiserror::Error;
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::{mpsc, Mutex, RwLock};
 use tokio::time::{self, Duration};
 use tracing::{debug, error, info, warn};
@@ -27,12 +28,14 @@ pub enum OrchestratorError {
 }
 
 pub type ServiceEvent = (String, ServiceStatus);
+pub type LogLine = (String, String); // (service_name, line)
 
 pub struct Orchestrator {
     config: Arc<KrillConfig>,
     dag: Arc<DependencyGraph>,
     runners: Arc<RwLock<HashMap<String, Arc<Mutex<ServiceRunner>>>>>,
     event_tx: mpsc::UnboundedSender<ServiceEvent>,
+    log_tx: Option<mpsc::UnboundedSender<LogLine>>,
     shutdown: Arc<Mutex<bool>>,
 }
 
@@ -40,6 +43,14 @@ impl Orchestrator {
     pub fn new(
         config: KrillConfig,
         event_tx: mpsc::UnboundedSender<ServiceEvent>,
+    ) -> Result<Self, OrchestratorError> {
+        Self::with_log_tx(config, event_tx, None)
+    }
+
+    pub fn with_log_tx(
+        config: KrillConfig,
+        event_tx: mpsc::UnboundedSender<ServiceEvent>,
+        log_tx: Option<mpsc::UnboundedSender<LogLine>>,
     ) -> Result<Self, OrchestratorError> {
         // Build dependency graph
         let deps_map: HashMap<String, Vec<Dependency>> = config
@@ -67,6 +78,7 @@ impl Orchestrator {
             dag: Arc::new(dag),
             runners: Arc::new(RwLock::new(runners)),
             event_tx,
+            log_tx,
             shutdown: Arc::new(Mutex::new(false)),
         })
     }
@@ -75,29 +87,25 @@ impl Orchestrator {
     pub async fn start_all(&self) -> Result<(), OrchestratorError> {
         info!("Starting all services in DAG order");
 
-        let startup_order = self.dag.startup_order();
+        let startup_order = self.dag.startup_order()?;
 
-        for layer in startup_order {
-            info!("Starting layer: {:?}", layer);
+        // Start all services concurrently - dependencies are handled by start_when_ready
+        let mut handles = vec![];
 
-            // Start all services in this layer concurrently
-            let mut handles = vec![];
+        for service_name in startup_order {
+            let self_clone = self.clone_for_task();
+            let service_name = service_name.clone();
 
-            for service_name in layer {
-                let self_clone = self.clone_for_task();
-                let service_name = service_name.clone();
+            let handle =
+                tokio::spawn(async move { self_clone.start_when_ready(&service_name).await });
 
-                let handle =
-                    tokio::spawn(async move { self_clone.start_when_ready(&service_name).await });
+            handles.push(handle);
+        }
 
-                handles.push(handle);
-            }
-
-            // Wait for all services in this layer to start
-            for handle in handles {
-                if let Err(e) = handle.await {
-                    error!("Failed to start service: {}", e);
-                }
+        // Wait for all services to start
+        for handle in handles {
+            if let Err(e) = handle.await {
+                error!("Failed to start service: {}", e);
             }
         }
 
@@ -166,6 +174,14 @@ impl Orchestrator {
         let mut runner_guard = runner.lock().await;
         runner_guard.start().await?;
 
+        // Take stdout/stderr handles and spawn output capture tasks
+        if let Some(stdout) = runner_guard.take_stdout() {
+            self.spawn_output_reader(service_name.to_string(), stdout, false);
+        }
+        if let Some(stderr) = runner_guard.take_stderr() {
+            self.spawn_output_reader(service_name.to_string(), stderr, true);
+        }
+
         // Send event
         let status = runner_guard.get_status();
         let _ = self.event_tx.send((service_name.to_string(), status));
@@ -176,6 +192,33 @@ impl Orchestrator {
         self.start_monitoring_task(service_name);
 
         Ok(())
+    }
+
+    /// Spawn a task to read output from a process stream
+    fn spawn_output_reader<R>(&self, service_name: String, reader: R, is_stderr: bool)
+    where
+        R: tokio::io::AsyncRead + Unpin + Send + 'static,
+    {
+        let log_tx = self.log_tx.clone();
+        let stream_type = if is_stderr { "stderr" } else { "stdout" };
+
+        tokio::spawn(async move {
+            let mut lines = BufReader::new(reader).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                // Log to tracing
+                if is_stderr {
+                    warn!("[{}] {}", service_name, line);
+                } else {
+                    info!("[{}] {}", service_name, line);
+                }
+
+                // Send to log channel if available
+                if let Some(ref tx) = log_tx {
+                    let _ = tx.send((service_name.clone(), line));
+                }
+            }
+            debug!("[{}] {} stream closed", service_name, stream_type);
+        });
     }
 
     /// Start a monitoring task for a service
@@ -308,39 +351,27 @@ impl Orchestrator {
 
         *self.shutdown.lock().await = true;
 
-        let shutdown_order = self.dag.shutdown_order();
+        let shutdown_order = self.dag.shutdown_order()?;
 
-        for layer in shutdown_order {
-            info!("Stopping layer: {:?}", layer);
+        // Stop services sequentially in reverse dependency order
+        for service_name in shutdown_order {
+            let runners = self.runners.read().await;
+            if let Some(runner) = runners.get(&service_name) {
+                let runner = runner.clone();
+                let event_tx = self.event_tx.clone();
+                let name = service_name.clone();
 
-            let mut handles = vec![];
+                drop(runners); // Release read lock before spawning
 
-            for service_name in layer {
-                let runners = self.runners.read().await;
-                if let Some(runner) = runners.get(&service_name) {
-                    let runner = runner.clone();
-                    let service_name = service_name.clone();
-                    let event_tx = self.event_tx.clone();
+                let mut runner_guard = runner.lock().await;
+                info!("Stopping service '{}'", name);
 
-                    let handle = tokio::spawn(async move {
-                        let mut runner_guard = runner.lock().await;
-                        info!("Stopping service '{}'", service_name);
-
-                        if let Err(e) = runner_guard.stop().await {
-                            error!("Failed to stop '{}': {}", service_name, e);
-                        }
-
-                        let status = runner_guard.get_status();
-                        let _ = event_tx.send((service_name, status));
-                    });
-
-                    handles.push(handle);
+                if let Err(e) = runner_guard.stop().await {
+                    error!("Failed to stop '{}': {}", name, e);
                 }
-            }
 
-            // Wait for all services in this layer to stop
-            for handle in handles {
-                let _ = handle.await;
+                let status = runner_guard.get_status();
+                let _ = event_tx.send((name, status));
             }
         }
 
@@ -349,16 +380,115 @@ impl Orchestrator {
     }
 
     /// Get status of all services
-    pub async fn get_snapshot(&self) -> HashMap<String, ServiceStatus> {
+    pub async fn get_snapshot(&self) -> HashMap<String, krill_common::ServiceSnapshot> {
         let mut snapshot = HashMap::new();
         let runners = self.runners.read().await;
 
         for (name, runner) in runners.iter() {
             let runner_guard = runner.lock().await;
-            snapshot.insert(name.clone(), runner_guard.get_status());
+            snapshot.insert(
+                name.clone(),
+                krill_common::ServiceSnapshot {
+                    status: runner_guard.get_status(),
+                    pid: runner_guard.pid(),
+                    uptime: None,
+                    restart_count: runner_guard.restart_count(),
+                    last_error: None,
+                    namespace: runner_guard.namespace().to_string(),
+                    executor_type: runner_guard.executor_type().to_string(),
+                },
+            );
         }
 
         snapshot
+    }
+
+    /// Stop a specific service
+    pub async fn stop_service(&self, name: &str) -> Result<(), OrchestratorError> {
+        let runners = self.runners.read().await;
+        let runner = runners
+            .get(name)
+            .ok_or_else(|| OrchestratorError::ServiceNotFound(name.to_string()))?
+            .clone();
+        drop(runners);
+
+        let mut runner_guard = runner.lock().await;
+        info!("Stopping service '{}'", name);
+
+        // Send "stopping" status
+        let _ = self
+            .event_tx
+            .send((name.to_string(), krill_common::ServiceStatus::Stopping));
+
+        runner_guard.stop().await?;
+
+        let status = runner_guard.get_status();
+        let _ = self.event_tx.send((name.to_string(), status));
+
+        info!("Service '{}' stopped", name);
+
+        Ok(())
+    }
+
+    /// Restart a specific service
+    pub async fn restart_service(&self, name: &str) -> Result<(), OrchestratorError> {
+        let runners = self.runners.read().await;
+        let runner = runners
+            .get(name)
+            .ok_or_else(|| OrchestratorError::ServiceNotFound(name.to_string()))?
+            .clone();
+        drop(runners);
+
+        let mut runner_guard = runner.lock().await;
+        info!("Restarting service '{}'", name);
+
+        // Send "restarting" status (we use Stopping as intermediate state)
+        let _ = self
+            .event_tx
+            .send((name.to_string(), krill_common::ServiceStatus::Stopping));
+
+        // Stop first
+        if let Err(e) = runner_guard.stop().await {
+            warn!("Error stopping service '{}' during restart: {}", name, e);
+        }
+
+        // Send "stopped" status
+        let _ = self
+            .event_tx
+            .send((name.to_string(), krill_common::ServiceStatus::Stopped));
+
+        // Brief pause to make the state change visible
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        // Send "starting" status
+        let _ = self
+            .event_tx
+            .send((name.to_string(), krill_common::ServiceStatus::Starting));
+
+        // Increment restart count manually since we're doing a manual restart
+        runner_guard.increment_restart_count();
+
+        // Start again
+        runner_guard.start().await?;
+
+        // Take stdout/stderr handles and spawn output capture tasks
+        if let Some(stdout) = runner_guard.take_stdout() {
+            self.spawn_output_reader(name.to_string(), stdout, false);
+        }
+        if let Some(stderr) = runner_guard.take_stderr() {
+            self.spawn_output_reader(name.to_string(), stderr, true);
+        }
+
+        let status = runner_guard.get_status();
+        let _ = self.event_tx.send((name.to_string(), status));
+
+        // Start monitoring task for the restarted service
+        drop(runner_guard);
+        self.start_monitoring_task(name);
+
+        info!("Service '{}' restarted successfully", name);
+
+        Ok(())
     }
 
     fn clone_for_task(&self) -> Self {
@@ -367,6 +497,7 @@ impl Orchestrator {
             dag: Arc::clone(&self.dag),
             runners: Arc::clone(&self.runners),
             event_tx: self.event_tx.clone(),
+            log_tx: self.log_tx.clone(),
             shutdown: Arc::clone(&self.shutdown),
         }
     }

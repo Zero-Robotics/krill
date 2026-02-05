@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 use thiserror::Error;
-use tokio::process::{Child, Command};
+use tokio::process::{Child, ChildStderr, ChildStdout, Command};
 use tracing::{debug, error, info, warn};
 
 #[derive(Debug, Error)]
@@ -56,6 +56,7 @@ pub struct ServiceRunner {
     pgid: Option<u32>,
     restart_count: u32,
     last_healthy_time: Option<Instant>,
+    #[allow(dead_code)] // Reserved for future health check implementation
     health_checker: Option<HealthChecker>,
     env_vars: HashMap<String, String>,
 }
@@ -94,6 +95,10 @@ impl ServiceRunner {
 
     pub fn restart_count(&self) -> u32 {
         self.restart_count
+    }
+
+    pub fn increment_restart_count(&mut self) {
+        self.restart_count += 1;
     }
 
     /// Start the service
@@ -365,5 +370,23 @@ impl ServiceRunner {
             ServiceState::Stopped => ServiceStatus::Stopped,
             ServiceState::Failed => ServiceStatus::Failed,
         }
+    }
+
+    pub fn namespace(&self) -> &str {
+        &self.workspace_name
+    }
+
+    pub fn executor_type(&self) -> &str {
+        self.config.execute.executor_type()
+    }
+
+    /// Take the stdout handle from the process (can only be called once)
+    pub fn take_stdout(&mut self) -> Option<ChildStdout> {
+        self.process.as_mut().and_then(|p| p.stdout.take())
+    }
+
+    /// Take the stderr handle from the process (can only be called once)
+    pub fn take_stderr(&mut self) -> Option<ChildStderr> {
+        self.process.as_mut().and_then(|p| p.stderr.take())
     }
 }

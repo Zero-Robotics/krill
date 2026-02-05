@@ -1,51 +1,31 @@
-// Krill Daemon - Main entry point
+// krill daemon - Run the daemon directly (used internally)
 
 use anyhow::{Context, Result};
-use clap::Parser;
 use krill_common::KrillConfig;
-use krill_daemon::{IpcServer, LogManager, Orchestrator};
+use krill_daemon::{IpcServer, LogStore, Orchestrator};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::signal;
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
-use tracing_subscriber::{fmt, EnvFilter};
 
-#[derive(Parser, Debug)]
-#[command(name = "krill-daemon")]
-#[command(about = "Krill process orchestrator daemon", long_about = None)]
-struct Args {
+#[derive(clap::Args, Debug)]
+pub struct DaemonArgs {
     /// Path to configuration file
     #[arg(short, long, value_name = "FILE")]
-    config: PathBuf,
+    pub config: PathBuf,
 
     /// Log directory (overrides config)
     #[arg(long, value_name = "DIR")]
-    log_dir: Option<PathBuf>,
+    pub log_dir: Option<PathBuf>,
 
     /// IPC socket path
     #[arg(long, default_value = "/tmp/krill.sock")]
-    socket: PathBuf,
-
-    /// Verbose logging
-    #[arg(short, long)]
-    verbose: bool,
+    pub socket: PathBuf,
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    let args = Args::parse();
-
-    // Initialize tracing
-    let filter = if args.verbose {
-        EnvFilter::new("debug")
-    } else {
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"))
-    };
-
-    fmt().with_env_filter(filter).with_target(false).init();
-
+pub async fn execute(args: DaemonArgs) -> Result<()> {
     info!("Starting krill-daemon");
 
     // Load configuration
@@ -55,14 +35,17 @@ async fn main() -> Result<()> {
     info!("Loaded workspace: {}", config.name);
     info!("Services: {}", config.services.len());
 
-    // Initialize logging system
+    // Initialize log store
     let log_dir = args.log_dir.or(config.log_dir.clone());
-    let log_manager = LogManager::new(log_dir).context("Failed to initialize log manager")?;
+    let log_store = LogStore::new(log_dir).context("Failed to initialize log store")?;
 
-    info!("Logs directory: {:?}", log_manager.session_dir());
+    info!("Logs directory: {:?}", log_store.session_dir());
 
     // Create event channel
     let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+
+    // Create log channel for service output
+    let (log_tx, mut log_rx) = mpsc::unbounded_channel();
 
     // Create command channel for IPC
     let (command_tx, mut command_rx) = mpsc::unbounded_channel();
@@ -72,15 +55,21 @@ async fn main() -> Result<()> {
         mpsc::UnboundedSender<HashMap<String, krill_common::ServiceSnapshot>>,
     >();
 
-    // Create orchestrator
+    // Create orchestrator with log channel
     let orchestrator = Arc::new(
-        Orchestrator::new(config, event_tx.clone()).context("Failed to create orchestrator")?,
+        Orchestrator::with_log_tx(config, event_tx.clone(), Some(log_tx))
+            .context("Failed to create orchestrator")?,
     );
 
-    // Create IPC server
+    // Create IPC server with log store
     let ipc_server = Arc::new(
-        IpcServer::new(args.socket.clone(), command_tx, snapshot_req_tx)
-            .context("Failed to create IPC server")?,
+        IpcServer::with_log_store(
+            args.socket.clone(),
+            command_tx,
+            snapshot_req_tx,
+            Some(Arc::clone(&log_store)),
+        )
+        .context("Failed to create IPC server")?,
     );
 
     // Spawn IPC server task
@@ -97,6 +86,18 @@ async fn main() -> Result<()> {
         while let Some((service, status)) = event_rx.recv().await {
             info!("Event: {} -> {:?}", service, status);
             ipc_server_clone.broadcast_event(service, status);
+        }
+    });
+
+    // Spawn log forwarding task - writes to log store and broadcasts to clients
+    let ipc_server_clone = Arc::clone(&ipc_server);
+    let log_store_clone = Arc::clone(&log_store);
+    let log_handle = tokio::spawn(async move {
+        while let Some((service, line)) = log_rx.recv().await {
+            // Write to log store (file + memory)
+            log_store_clone.add_log(&service, line.clone()).await;
+            // Broadcast to connected clients
+            ipc_server_clone.broadcast_log(service, line);
         }
     });
 
@@ -187,8 +188,9 @@ async fn main() -> Result<()> {
 
     ipc_server.shutdown().await;
 
-    // Cancel event forwarding task
+    // Cancel event and log forwarding tasks
     event_handle.abort();
+    log_handle.abort();
 
     info!("Daemon stopped");
     Ok(())

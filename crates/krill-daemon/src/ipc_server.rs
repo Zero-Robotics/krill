@@ -1,5 +1,7 @@
 // IPC Server - Unix socket server for client communication
 
+use crate::logging::LogStore;
+use krill_common::ipc::ServiceSnapshot;
 use krill_common::{ClientMessage, CommandAction, ServerMessage, ServiceStatus};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -31,7 +33,8 @@ pub struct IpcServer {
     socket_path: PathBuf,
     event_broadcast: broadcast::Sender<ServerMessage>,
     command_tx: mpsc::UnboundedSender<CommandRequest>,
-    snapshot_req_tx: mpsc::UnboundedSender<mpsc::UnboundedSender<HashMap<String, ServiceStatus>>>,
+    snapshot_req_tx: mpsc::UnboundedSender<mpsc::UnboundedSender<HashMap<String, ServiceSnapshot>>>,
+    log_store: Option<Arc<LogStore>>,
     shutdown: Arc<Mutex<bool>>,
 }
 
@@ -40,8 +43,19 @@ impl IpcServer {
         socket_path: PathBuf,
         command_tx: mpsc::UnboundedSender<CommandRequest>,
         snapshot_req_tx: mpsc::UnboundedSender<
-            mpsc::UnboundedSender<HashMap<String, ServiceStatus>>,
+            mpsc::UnboundedSender<HashMap<String, ServiceSnapshot>>,
         >,
+    ) -> Result<Self, IpcError> {
+        Self::with_log_store(socket_path, command_tx, snapshot_req_tx, None)
+    }
+
+    pub fn with_log_store(
+        socket_path: PathBuf,
+        command_tx: mpsc::UnboundedSender<CommandRequest>,
+        snapshot_req_tx: mpsc::UnboundedSender<
+            mpsc::UnboundedSender<HashMap<String, ServiceSnapshot>>,
+        >,
+        log_store: Option<Arc<LogStore>>,
     ) -> Result<Self, IpcError> {
         // Remove existing socket if it exists
         if socket_path.exists() {
@@ -55,6 +69,7 @@ impl IpcServer {
             event_broadcast,
             command_tx,
             snapshot_req_tx,
+            log_store,
             shutdown: Arc::new(Mutex::new(false)),
         })
     }
@@ -89,6 +104,7 @@ impl IpcServer {
                         self.event_broadcast.clone(),
                         self.command_tx.clone(),
                         self.snapshot_req_tx.clone(),
+                        self.log_store.clone(),
                     );
 
                     tokio::spawn(async move {
@@ -134,7 +150,8 @@ impl IpcServer {
 struct ClientHandler {
     event_rx: broadcast::Receiver<ServerMessage>,
     command_tx: mpsc::UnboundedSender<CommandRequest>,
-    snapshot_req_tx: mpsc::UnboundedSender<mpsc::UnboundedSender<HashMap<String, ServiceStatus>>>,
+    snapshot_req_tx: mpsc::UnboundedSender<mpsc::UnboundedSender<HashMap<String, ServiceSnapshot>>>,
+    log_store: Option<Arc<LogStore>>,
     reader: BufReader<tokio::io::ReadHalf<UnixStream>>,
 }
 
@@ -144,8 +161,9 @@ impl ClientHandler {
         event_broadcast: broadcast::Sender<ServerMessage>,
         command_tx: mpsc::UnboundedSender<CommandRequest>,
         snapshot_req_tx: mpsc::UnboundedSender<
-            mpsc::UnboundedSender<HashMap<String, ServiceStatus>>,
+            mpsc::UnboundedSender<HashMap<String, ServiceSnapshot>>,
         >,
+        log_store: Option<Arc<LogStore>>,
     ) -> (Self, tokio::io::WriteHalf<UnixStream>) {
         let event_rx = event_broadcast.subscribe();
         let (reader, writer) = tokio::io::split(stream);
@@ -155,6 +173,7 @@ impl ClientHandler {
             event_rx,
             command_tx,
             snapshot_req_tx,
+            log_store,
             reader,
         };
 
@@ -304,6 +323,19 @@ impl ClientHandler {
                         error!("Timeout waiting for snapshot");
                     }
                 }
+            }
+
+            ClientMessage::GetLogs { service } => {
+                debug!("Client requested logs for: {:?}", service);
+
+                let lines = if let Some(ref log_store) = self.log_store {
+                    log_store.get_logs(service.as_deref(), 1000).await
+                } else {
+                    vec!["Log store not available.".to_string()]
+                };
+
+                let response = ServerMessage::LogHistory { service, lines };
+                let _ = response_tx.send(response);
             }
         }
 

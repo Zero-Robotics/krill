@@ -18,6 +18,8 @@ pub struct ServiceState {
     pub status: ServiceStatus,
     pub pid: Option<u32>,
     pub restart_count: u32,
+    pub namespace: String,
+    pub executor_type: String,
 }
 
 pub struct App {
@@ -25,7 +27,9 @@ pub struct App {
     pub services: HashMap<String, ServiceState>,
     pub selected_index: usize,
     pub service_list: Vec<String>,
-    pub logs: Vec<String>,
+    pub logs: HashMap<String, Vec<String>>, // per-service logs
+    pub log_scroll: usize,                  // scroll offset from bottom (0 = at bottom)
+    pub auto_scroll: bool,                  // auto-scroll to new logs
     pub should_quit: bool,
     pub show_confirmation: bool,
     pub confirmation_message: String,
@@ -40,7 +44,9 @@ impl App {
             services: HashMap::new(),
             selected_index: 0,
             service_list: Vec::new(),
-            logs: Vec::new(),
+            logs: HashMap::new(),
+            log_scroll: 0,
+            auto_scroll: true,
             should_quit: false,
             show_confirmation: false,
             confirmation_message: String::new(),
@@ -60,19 +66,27 @@ impl App {
                         status,
                         pid: None,
                         restart_count: 0,
+                        namespace: String::new(),
+                        executor_type: String::new(),
                     });
 
                 // Update service list
                 self.update_service_list();
             }
             ServerMessage::LogLine { service, line } => {
+                // Store logs per-service
+                let service_logs = self.logs.entry(service.clone()).or_insert_with(Vec::new);
+                service_logs.push(line);
+
+                // Keep only last 2000 lines per service
+                if service_logs.len() > 2000 {
+                    service_logs.drain(0..1000);
+                }
+
+                // If viewing this service's logs and auto_scroll is on, stay at bottom
                 if let View::Logs(current_service) = &self.current_view {
-                    if current_service == &service {
-                        self.logs.push(line);
-                        // Keep only last 1000 lines
-                        if self.logs.len() > 1000 {
-                            self.logs.drain(0..500);
-                        }
+                    if current_service == &service && self.auto_scroll {
+                        self.log_scroll = 0;
                     }
                 }
             }
@@ -85,10 +99,25 @@ impl App {
                             status: snapshot.status,
                             pid: snapshot.pid,
                             restart_count: snapshot.restart_count,
+                            namespace: snapshot.namespace,
+                            executor_type: snapshot.executor_type,
                         },
                     );
                 }
                 self.update_service_list();
+            }
+            ServerMessage::LogHistory { service, lines } => {
+                // Prepend history to existing logs
+                if let Some(svc) = service {
+                    let service_logs = self.logs.entry(svc).or_insert_with(Vec::new);
+                    // Insert history at the beginning
+                    let mut new_logs = lines;
+                    new_logs.append(service_logs);
+                    *service_logs = new_logs;
+                } else {
+                    // All logs - store under special key
+                    self.logs.insert("__all__".to_string(), lines);
+                }
             }
             _ => {}
         }
@@ -119,8 +148,23 @@ impl App {
 
     pub fn enter_logs(&mut self) {
         if let Some(service) = self.selected_service() {
-            self.current_view = View::Logs(service.to_string());
-            self.logs.clear();
+            let service_name = service.to_string();
+            self.current_view = View::Logs(service_name.clone());
+            self.log_scroll = 0;
+            self.auto_scroll = true;
+
+            // Request log history first
+            let get_logs_msg = ClientMessage::GetLogs {
+                service: Some(service_name.clone()),
+            };
+            let _ = self.message_tx.send(get_logs_msg);
+
+            // Subscribe to this service's logs
+            let subscribe_msg = ClientMessage::Subscribe {
+                events: true,
+                logs: Some(service_name),
+            };
+            let _ = self.message_tx.send(subscribe_msg);
         }
     }
 
@@ -132,6 +176,64 @@ impl App {
 
     pub fn back_to_list(&mut self) {
         self.current_view = View::List;
+        // Re-subscribe to all logs
+        let subscribe_msg = ClientMessage::Subscribe {
+            events: true,
+            logs: None,
+        };
+        let _ = self.message_tx.send(subscribe_msg);
+    }
+
+    /// Get logs for the current service being viewed
+    pub fn current_logs(&self) -> &[String] {
+        if let View::Logs(service) = &self.current_view {
+            self.logs.get(service).map(|v| v.as_slice()).unwrap_or(&[])
+        } else {
+            &[]
+        }
+    }
+
+    /// Scroll logs up (older)
+    pub fn scroll_logs_up(&mut self, amount: usize) {
+        if let View::Logs(service) = &self.current_view {
+            let total_logs = self.logs.get(service).map(|v| v.len()).unwrap_or(0);
+            self.log_scroll = self
+                .log_scroll
+                .saturating_add(amount)
+                .min(total_logs.saturating_sub(1));
+            self.auto_scroll = false;
+        }
+    }
+
+    /// Scroll logs down (newer)
+    pub fn scroll_logs_down(&mut self, amount: usize) {
+        self.log_scroll = self.log_scroll.saturating_sub(amount);
+        if self.log_scroll == 0 {
+            self.auto_scroll = true;
+        }
+    }
+
+    /// Scroll to top (oldest logs)
+    pub fn scroll_logs_to_top(&mut self) {
+        if let View::Logs(service) = &self.current_view {
+            let total_logs = self.logs.get(service).map(|v| v.len()).unwrap_or(0);
+            self.log_scroll = total_logs.saturating_sub(1);
+            self.auto_scroll = false;
+        }
+    }
+
+    /// Scroll to bottom (newest logs)
+    pub fn scroll_logs_to_bottom(&mut self) {
+        self.log_scroll = 0;
+        self.auto_scroll = true;
+    }
+
+    /// Toggle auto-scroll mode
+    pub fn toggle_auto_scroll(&mut self) {
+        self.auto_scroll = !self.auto_scroll;
+        if self.auto_scroll {
+            self.log_scroll = 0; // Jump to bottom when enabling
+        }
     }
 
     pub fn restart_selected(&mut self) -> io::Result<()> {

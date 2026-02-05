@@ -6,6 +6,8 @@ pub mod orchestrator;
 pub mod runner;
 
 pub use ipc_server::IpcServer;
+#[allow(deprecated)]
 pub use logging::LogManager;
+pub use logging::LogStore;
 pub use orchestrator::Orchestrator;
 pub use runner::ServiceRunner;

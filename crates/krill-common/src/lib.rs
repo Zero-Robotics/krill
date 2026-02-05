@@ -19,7 +19,7 @@ pub use dag::{DagError, DependencyGraph};
 pub use dependency::{Dependency, DependencyCondition};
 pub use execute::ExecuteConfig;
 pub use health::{validate_gpu_available, GpuRequirement, HealthChecker, HealthError};
-pub use ipc::{ClientMessage, CommandAction, ServerMessage, ServiceStatus};
+pub use ipc::{ClientMessage, CommandAction, ServerMessage, ServiceSnapshot, ServiceStatus};
 pub use policy::{PolicyConfig, RestartPolicy};
 pub use process::{
     build_command, generate_process_name, get_process_group, get_stop_command, get_working_dir,

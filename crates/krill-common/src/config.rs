@@ -36,12 +36,24 @@ impl KrillConfig {
         let content = std::fs::read_to_string(path)
             .map_err(|e| ConfigError::FileRead(path.clone(), e.to_string()))?;
 
-        let config: KrillConfig =
+        let mut config: KrillConfig =
             serde_yaml::from_str(&content).map_err(|e| ConfigError::Parse(e.to_string()))?;
+
+        // Resolve relative paths against the config file's directory
+        if let Some(parent) = path.parent() {
+            config.resolve_paths(parent);
+        }
 
         config.validate()?;
 
         Ok(config)
+    }
+
+    /// Resolve relative paths in the config against a base directory
+    fn resolve_paths(&mut self, base_dir: &std::path::Path) {
+        for service in self.services.values_mut() {
+            service.execute.resolve_working_dir(base_dir);
+        }
     }
 
     pub fn validate(&self) -> Result<(), ConfigError> {
