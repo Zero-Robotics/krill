@@ -52,10 +52,6 @@ run-tui:
 doc:
     cargo doc --workspace --no-deps --open
 
-# Run integration tests
-test-integration:
-    cargo test --test '*' --features integration
-
 # Install the binaries locally
 install:
     cargo install --path crates/krill-cli
