@@ -58,8 +58,7 @@ test-integration:
 
 # Install the binaries locally
 install:
-    cargo install --path crates/krill-daemon
-    cargo install --path crates/krill-tui
+    cargo install --path crates/krill-cli
 
 # Watch for changes and rebuild
 watch:
