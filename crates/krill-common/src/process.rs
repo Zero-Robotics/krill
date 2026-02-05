@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use thiserror::Error;
 
 #[cfg(unix)]
-use nix::unistd::{Pid, setpgid};
+use nix::unistd::{setpgid, Pid};
 
 #[derive(Debug, Error)]
 pub enum ProcessError {
@@ -423,12 +423,10 @@ mod tests {
     fn test_pgid_not_supported_on_non_unix() {
         let result = setup_process_group(1234);
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("only supported on Unix")
-        );
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("only supported on Unix"));
 
         let result = get_process_group(1234);
         assert!(result.is_err());

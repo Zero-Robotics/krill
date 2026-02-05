@@ -2,7 +2,7 @@
 # Install just: cargo install just
 
 # Default recipe - show all available commands
-default:
+@_default:
     @just --list
 
 # Build all workspace members

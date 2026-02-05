@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use krill_common::KrillConfig;
-use krill_daemon::{IpcServer, LogManager, Orchestrator};
+use krill_daemon::{IpcServer, LogStore, Orchestrator};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -57,9 +57,9 @@ async fn main() -> Result<()> {
 
     // Initialize logging system
     let log_dir = args.log_dir.or(config.log_dir.clone());
-    let log_manager = LogManager::new(log_dir).context("Failed to initialize log manager")?;
+    let log_store = LogStore::new(log_dir).context("Failed to initialize log manager")?;
 
-    info!("Logs directory: {:?}", log_manager.session_dir());
+    info!("Logs directory: {:?}", log_store.session_dir());
 
     // Create event channel
     let (event_tx, mut event_rx) = mpsc::unbounded_channel();
