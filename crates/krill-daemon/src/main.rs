@@ -72,15 +72,24 @@ async fn main() -> Result<()> {
         mpsc::UnboundedSender<HashMap<String, krill_common::ServiceSnapshot>>,
     >();
 
+    // Create heartbeat channel
+    let (heartbeat_tx, mut heartbeat_rx) = mpsc::unbounded_channel();
+
     // Create orchestrator
     let orchestrator = Arc::new(
         Orchestrator::new(config, event_tx.clone()).context("Failed to create orchestrator")?,
     );
 
-    // Create IPC server
+    // Create IPC server with heartbeat channel
     let ipc_server = Arc::new(
-        IpcServer::new(args.socket.clone(), command_tx, snapshot_req_tx)
-            .context("Failed to create IPC server")?,
+        IpcServer::with_heartbeat_tx(
+            args.socket.clone(),
+            command_tx,
+            snapshot_req_tx,
+            Some(heartbeat_tx),
+            Some(log_store),
+        )
+        .context("Failed to create IPC server")?,
     );
 
     // Spawn IPC server task
@@ -149,6 +158,19 @@ async fn main() -> Result<()> {
         while let Some(response_tx) = snapshot_req_rx.recv().await {
             let snapshot = orchestrator_clone.get_snapshot().await;
             let _ = response_tx.send(snapshot);
+        }
+    });
+
+    // Spawn heartbeat handling task
+    let orchestrator_clone = Arc::clone(&orchestrator);
+    tokio::spawn(async move {
+        while let Some((service, status, metadata)) = heartbeat_rx.recv().await {
+            if let Err(e) = orchestrator_clone
+                .process_heartbeat(&service, status, metadata)
+                .await
+            {
+                error!("Failed to process heartbeat for '{}': {}", service, e);
+            }
         }
     });
 

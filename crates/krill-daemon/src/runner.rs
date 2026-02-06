@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 use thiserror::Error;
 use tokio::process::{Child, ChildStderr, ChildStdout, Command};
 use tracing::{debug, error, info, warn};
+use uuid::Uuid;
 
 #[derive(Debug, Error)]
 pub enum RunnerError {
@@ -54,7 +55,9 @@ pub struct ServiceRunner {
     process: Option<Child>,
     pid: Option<u32>,
     pgid: Option<u32>,
+    uid: String,
     restart_count: u32,
+    start_time: Option<Instant>,
     last_healthy_time: Option<Instant>,
     #[allow(dead_code)] // Reserved for future health check implementation
     health_checker: Option<HealthChecker>,
@@ -70,6 +73,9 @@ impl ServiceRunner {
     ) -> Self {
         let health_checker = config.health_check.clone();
 
+        // Generate a short UID (first 7 chars of UUID)
+        let uid = Uuid::new_v4().to_string()[..7].to_string();
+
         Self {
             service_name,
             workspace_name,
@@ -78,7 +84,9 @@ impl ServiceRunner {
             process: None,
             pid: None,
             pgid: None,
+            uid,
             restart_count: 0,
+            start_time: None,
             last_healthy_time: None,
             health_checker,
             env_vars,
@@ -103,7 +111,10 @@ impl ServiceRunner {
 
     /// Start the service
     pub async fn start(&mut self) -> Result<(), RunnerError> {
-        if self.state != ServiceState::Pending && self.state != ServiceState::Stopped {
+        if self.state != ServiceState::Pending
+            && self.state != ServiceState::Stopped
+            && self.state != ServiceState::Failed
+        {
             warn!(
                 "Service '{}' already in state {:?}, skipping start",
                 self.service_name, self.state
@@ -204,6 +215,7 @@ impl ServiceRunner {
         self.process = Some(child);
         self.pid = Some(pid);
         self.state = ServiceState::Running;
+        self.start_time = Some(Instant::now());
 
         info!(
             "Service '{}' started successfully (PID: {})",
@@ -291,6 +303,7 @@ impl ServiceRunner {
         self.process = None;
         self.pid = None;
         self.pgid = None;
+        self.start_time = None;
     }
 
     /// Check if process is still running
@@ -300,6 +313,16 @@ impl ServiceRunner {
         } else {
             false
         }
+    }
+
+    /// Get exit code if process has exited
+    pub fn get_exit_code(&mut self) -> Option<i32> {
+        if let Some(ref mut process) = self.process {
+            if let Ok(Some(status)) = process.try_wait() {
+                return status.code();
+            }
+        }
+        None
     }
 
     /// Update health status
@@ -378,6 +401,15 @@ impl ServiceRunner {
 
     pub fn executor_type(&self) -> &str {
         self.config.execute.executor_type()
+    }
+
+    /// Get service uptime
+    pub fn uptime(&self) -> Option<Duration> {
+        self.start_time.map(|start| start.elapsed())
+    }
+
+    pub fn uid(&self) -> &str {
+        &self.uid
     }
 
     /// Take the stdout handle from the process (can only be called once)

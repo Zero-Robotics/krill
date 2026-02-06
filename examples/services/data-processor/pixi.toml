@@ -1,0 +1,12 @@
+[workspace]
+name = "data-processor"
+version = "0.1.0"
+description = "Data processing service for robot example"
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-64", "osx-arm64"]
+
+[dependencies]
+python = ">=3.9"
+
+[tasks]
+run-processor = "python -u processor.py"

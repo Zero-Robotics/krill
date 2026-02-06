@@ -1,0 +1,128 @@
+# Krill Example Configuration
+# This demonstrates a typical robotics service orchestration with:
+# - 3 Python services using pixi for environment management
+# - DAG-based dependency ordering (data-processor -> analyzer -> controller)
+# - Different restart policies (always vs on-failure with max attempts)
+# - Heartbeat-based health checks using the Krill Python SDK
+
+version: "1"
+name: robot-example
+
+# Global environment variables shared by all services
+env:
+  ROBOT_ID: "robot-001"
+  LOG_LEVEL: "info"
+
+# Service definitions
+services:
+  # Service 1: Data Processor (no dependencies, always restarting)
+  # This is a foundational service that processes sensor data
+  data-processor:
+    execute:
+      type: pixi
+      task: run-processor
+      environment: default
+      working_dir: ./services/data-processor
+
+    # No dependencies - starts first
+    dependencies: []
+
+    # Critical service - if it fails, dependent services cascade
+    critical: false
+
+    # Heartbeat health check - service must send heartbeats via Python SDK
+    health_check:
+      type: heartbeat
+      timeout: 10s
+
+    # Policy: Always restart, unlimited attempts
+    policy:
+      restart: always
+      max_restarts: 0          # 0 = unlimited restarts
+      restart_delay: 5s        # Wait 5s between restart attempts
+      stop_timeout: 10s        # Graceful shutdown timeout
+
+  # Service 2: Data Analyzer (depends on data-processor)
+  # Analyzes processed data and generates insights
+  data-analyzer:
+    execute:
+      type: pixi
+      task: run-analyzer
+      environment: default
+      working_dir: ./services/data-analyzer
+
+    # Depends on data-processor being healthy
+    dependencies:
+      - data-processor: healthy
+
+    critical: false
+
+    # Heartbeat health check
+    health_check:
+      type: heartbeat
+      timeout: 10s
+
+    # Policy: Restart on failure, max 3 attempts
+    policy:
+      restart: on-failure
+      max_restarts: 3          # Give up after 3 failed restarts
+      restart_delay: 5s
+      stop_timeout: 10s
+
+  # Service 3: Decision Controller (depends on both previous services)
+  # Makes control decisions based on processed and analyzed data
+  decision-controller:
+    execute:
+      type: pixi
+      task: run-controller
+      environment: default
+      working_dir: ./services/decision-controller
+
+    # Depends on both data-processor and data-analyzer being healthy
+    dependencies:
+      - data-processor: healthy
+      - data-analyzer: healthy
+
+    # This is a critical service - if it fails, trigger emergency stop
+    critical: true
+
+    # Heartbeat health check
+    health_check:
+      type: heartbeat
+      timeout: 15s             # Slightly longer timeout for critical service
+
+    # Policy: Restart on failure, max 3 attempts
+    policy:
+      restart: on-failure
+      max_restarts: 3
+      restart_delay: 5s
+      stop_timeout: 15s        # Longer graceful shutdown for critical service
+
+# Service implementation notes:
+#
+# Each service should have a pixi.toml with the krill-sdk installed:
+#
+#   [dependencies]
+#   krill-sdk = { path = "../../../sdk/krill-python" }
+#
+# And a Python script like:
+#
+#   from krill import KrillClient
+#   import time
+#
+#   def main():
+#       client = KrillClient("data-processor")
+#
+#       try:
+#           while True:
+#               # Do work...
+#               process_data()
+#
+#               # Send heartbeat every second
+#               client.heartbeat()
+#               time.sleep(1)
+#       except KeyboardInterrupt:
+#           client.close()
+#
+#   if __name__ == "__main__":
+#       main()

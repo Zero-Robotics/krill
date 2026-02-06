@@ -17,9 +17,16 @@ pub struct ServiceState {
     pub name: String,
     pub status: ServiceStatus,
     pub pid: Option<u32>,
+    pub uid: String,
     pub restart_count: u32,
     pub namespace: String,
     pub executor_type: String,
+    pub uptime: Option<std::time::Duration>,
+    pub dependencies: Vec<String>,
+    pub uses_gpu: bool,
+    pub critical: bool,
+    pub restart_policy: String,
+    pub max_restarts: u32,
 }
 
 pub struct App {
@@ -35,6 +42,9 @@ pub struct App {
     pub confirmation_message: String,
     pub message_tx: mpsc::UnboundedSender<ClientMessage>,
     pub uptime_start: std::time::Instant,
+    pub cpu_usage: f32,
+    pub memory_used_mb: u64,
+    pub memory_total_mb: u64,
 }
 
 impl App {
@@ -52,6 +62,9 @@ impl App {
             confirmation_message: String::new(),
             message_tx,
             uptime_start: std::time::Instant::now(),
+            cpu_usage: 0.0,
+            memory_used_mb: 0,
+            memory_total_mb: 0,
         }
     }
 
@@ -65,9 +78,16 @@ impl App {
                         name: service.clone(),
                         status,
                         pid: None,
+                        uid: String::new(),
                         restart_count: 0,
                         namespace: String::new(),
                         executor_type: String::new(),
+                        uptime: None,
+                        dependencies: Vec::new(),
+                        uses_gpu: false,
+                        critical: false,
+                        restart_policy: String::new(),
+                        max_restarts: 0,
                     });
 
                 // Update service list
@@ -98,13 +118,29 @@ impl App {
                             name: name.clone(),
                             status: snapshot.status,
                             pid: snapshot.pid,
+                            uid: snapshot.uid,
                             restart_count: snapshot.restart_count,
                             namespace: snapshot.namespace,
                             executor_type: snapshot.executor_type,
+                            uptime: snapshot.uptime,
+                            dependencies: snapshot.dependencies,
+                            uses_gpu: snapshot.uses_gpu,
+                            critical: snapshot.critical,
+                            restart_policy: snapshot.restart_policy,
+                            max_restarts: snapshot.max_restarts,
                         },
                     );
                 }
                 self.update_service_list();
+            }
+            ServerMessage::SystemStats {
+                cpu_usage,
+                memory_used_mb,
+                memory_total_mb,
+            } => {
+                self.cpu_usage = cpu_usage;
+                self.memory_used_mb = memory_used_mb;
+                self.memory_total_mb = memory_total_mb;
             }
             ServerMessage::LogHistory { service, lines } => {
                 // Prepend history to existing logs

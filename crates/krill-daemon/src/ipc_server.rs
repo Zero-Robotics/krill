@@ -28,12 +28,14 @@ pub enum IpcError {
 }
 
 pub type CommandRequest = (CommandAction, Option<String>);
+pub type HeartbeatMessage = (String, ServiceStatus, HashMap<String, String>); // (service_name, status, metadata)
 
 pub struct IpcServer {
     socket_path: PathBuf,
     event_broadcast: broadcast::Sender<ServerMessage>,
     command_tx: mpsc::UnboundedSender<CommandRequest>,
     snapshot_req_tx: mpsc::UnboundedSender<mpsc::UnboundedSender<HashMap<String, ServiceSnapshot>>>,
+    heartbeat_tx: Option<mpsc::UnboundedSender<HeartbeatMessage>>,
     log_store: Option<Arc<LogStore>>,
     shutdown: Arc<Mutex<bool>>,
 }
@@ -57,6 +59,18 @@ impl IpcServer {
         >,
         log_store: Option<Arc<LogStore>>,
     ) -> Result<Self, IpcError> {
+        Self::with_heartbeat_tx(socket_path, command_tx, snapshot_req_tx, None, log_store)
+    }
+
+    pub fn with_heartbeat_tx(
+        socket_path: PathBuf,
+        command_tx: mpsc::UnboundedSender<CommandRequest>,
+        snapshot_req_tx: mpsc::UnboundedSender<
+            mpsc::UnboundedSender<HashMap<String, ServiceSnapshot>>,
+        >,
+        heartbeat_tx: Option<mpsc::UnboundedSender<HeartbeatMessage>>,
+        log_store: Option<Arc<LogStore>>,
+    ) -> Result<Self, IpcError> {
         // Remove existing socket if it exists
         if socket_path.exists() {
             std::fs::remove_file(&socket_path)?;
@@ -69,6 +83,7 @@ impl IpcServer {
             event_broadcast,
             command_tx,
             snapshot_req_tx,
+            heartbeat_tx,
             log_store,
             shutdown: Arc::new(Mutex::new(false)),
         })
@@ -104,6 +119,7 @@ impl IpcServer {
                         self.event_broadcast.clone(),
                         self.command_tx.clone(),
                         self.snapshot_req_tx.clone(),
+                        self.heartbeat_tx.clone(),
                         self.log_store.clone(),
                     );
 
@@ -151,6 +167,7 @@ struct ClientHandler {
     event_rx: broadcast::Receiver<ServerMessage>,
     command_tx: mpsc::UnboundedSender<CommandRequest>,
     snapshot_req_tx: mpsc::UnboundedSender<mpsc::UnboundedSender<HashMap<String, ServiceSnapshot>>>,
+    heartbeat_tx: Option<mpsc::UnboundedSender<HeartbeatMessage>>,
     log_store: Option<Arc<LogStore>>,
     reader: BufReader<tokio::io::ReadHalf<UnixStream>>,
 }
@@ -163,6 +180,7 @@ impl ClientHandler {
         snapshot_req_tx: mpsc::UnboundedSender<
             mpsc::UnboundedSender<HashMap<String, ServiceSnapshot>>,
         >,
+        heartbeat_tx: Option<mpsc::UnboundedSender<HeartbeatMessage>>,
         log_store: Option<Arc<LogStore>>,
     ) -> (Self, tokio::io::WriteHalf<UnixStream>) {
         let event_rx = event_broadcast.subscribe();
@@ -173,6 +191,7 @@ impl ClientHandler {
             event_rx,
             command_tx,
             snapshot_req_tx,
+            heartbeat_tx,
             log_store,
             reader,
         };
@@ -276,11 +295,13 @@ impl ClientHandler {
         match message {
             ClientMessage::Heartbeat {
                 service,
-                status: _,
-                metadata: _,
+                status,
+                metadata,
             } => {
                 debug!("Received heartbeat from service '{}'", service);
-                // TODO: Update service health based on heartbeat
+                if let Some(ref tx) = self.heartbeat_tx {
+                    let _ = tx.send((service, status, metadata));
+                }
             }
 
             ClientMessage::Command { action, target } => {

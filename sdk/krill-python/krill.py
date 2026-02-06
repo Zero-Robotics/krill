@@ -75,14 +75,31 @@ class KrillClient:
         self._connect()
 
     def _connect(self) -> None:
-        try:
-            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            sock.connect(self._socket_path)
-            self._sock = sock
-        except OSError as exc:
-            raise ConnectionError(
-                f"Failed to connect to daemon at {self._socket_path}: {exc}"
-            ) from exc
+        import time
+
+        max_retries = 10
+        retry_delay = 0.5  # seconds
+
+        for attempt in range(max_retries):
+            try:
+                sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                sock.settimeout(2.0)  # 2 second connection timeout
+                sock.connect(self._socket_path)
+                sock.settimeout(None)  # Remove timeout after connection
+                self._sock = sock
+                return
+            except (OSError, socket.timeout) as exc:
+                if attempt == max_retries - 1:
+                    # Last attempt failed
+                    raise ConnectionError(
+                        f"Failed to connect to daemon at {self._socket_path} after {max_retries} attempts: {exc}"
+                    ) from exc
+                # Retry after delay
+                time.sleep(retry_delay)
+            except Exception as exc:
+                raise ConnectionError(
+                    f"Unexpected error connecting to daemon at {self._socket_path}: {exc}"
+                ) from exc
 
     def heartbeat(self) -> None:
         """Send a healthy heartbeat to the daemon."""

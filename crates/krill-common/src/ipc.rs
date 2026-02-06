@@ -74,17 +74,34 @@ pub enum ServerMessage {
         service: Option<String>,
         lines: Vec<String>,
     },
+    SystemStats {
+        cpu_usage: f32,
+        memory_used_mb: u64,
+        memory_total_mb: u64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ServiceSnapshot {
     pub status: ServiceStatus,
     pub pid: Option<u32>,
+    #[serde(default)]
+    pub uid: String,
     pub uptime: Option<std::time::Duration>,
     pub restart_count: u32,
     pub last_error: Option<String>,
     pub namespace: String,
     pub executor_type: String,
+    #[serde(default)]
+    pub dependencies: Vec<String>,
+    #[serde(default)]
+    pub uses_gpu: bool,
+    #[serde(default)]
+    pub critical: bool,
+    #[serde(default)]
+    pub restart_policy: String,
+    #[serde(default)]
+    pub max_restarts: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -149,11 +166,17 @@ mod tests {
             ServiceSnapshot {
                 status: ServiceStatus::Running,
                 pid: Some(1234),
+                uid: "abc1234".to_string(),
                 uptime: Some(std::time::Duration::from_secs(300)),
                 restart_count: 0,
                 last_error: None,
                 namespace: "test-workspace".to_string(),
                 executor_type: "pixi".to_string(),
+                dependencies: vec![],
+                uses_gpu: false,
+                critical: false,
+                restart_policy: "Always".to_string(),
+                max_restarts: 0,
             },
         );
 

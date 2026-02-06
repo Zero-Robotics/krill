@@ -17,6 +17,7 @@ use krill_common::{ClientMessage, ServerMessage};
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
 use std::path::PathBuf;
+use sysinfo::System;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
 use tokio::sync::mpsc;
@@ -125,6 +126,8 @@ async fn run_app(
     server_rx: &mut mpsc::UnboundedReceiver<ServerMessage>,
 ) -> Result<()> {
     let mut tick_interval = tokio::time::interval(tokio::time::Duration::from_millis(250));
+    let mut sys_monitor_interval = tokio::time::interval(tokio::time::Duration::from_secs(2));
+    let mut sys = System::new_all();
     let mut needs_redraw = true;
 
     loop {
@@ -161,6 +164,24 @@ async fn run_app(
             // Tick for periodic updates (lowest priority)
             _ = tick_interval.tick() => {
                 // Periodic redraw for time updates
+                needs_redraw = true;
+            }
+
+            // System monitoring
+            _ = sys_monitor_interval.tick() => {
+                sys.refresh_cpu_all();
+                sys.refresh_memory();
+
+                // Calculate average CPU usage across all cores
+                let cpu_usage = sys.cpus().iter().map(|cpu| cpu.cpu_usage()).sum::<f32>() / sys.cpus().len() as f32;
+                let memory_used_mb = sys.used_memory() / 1024 / 1024;
+                let memory_total_mb = sys.total_memory() / 1024 / 1024;
+
+                // Update app state directly
+                app.cpu_usage = cpu_usage;
+                app.memory_used_mb = memory_used_mb;
+                app.memory_total_mb = memory_total_mb;
+
                 needs_redraw = true;
             }
         }

@@ -252,9 +252,22 @@ impl Orchestrator {
 
             // Check if process is still running
             if !runner_guard.is_running() {
-                warn!("Service '{}' process exited", service_name);
+                let exit_code = runner_guard.get_exit_code();
+                let current_state = runner_guard.state();
 
-                let exit_code = None; // TODO: capture exit code
+                // Skip if service is already being handled (stopping, stopped, or failed)
+                if matches!(
+                    current_state,
+                    ServiceState::Stopping | ServiceState::Stopped | ServiceState::Failed
+                ) {
+                    continue;
+                }
+
+                warn!(
+                    "Service '{}' process exited with code: {:?}",
+                    service_name, exit_code
+                );
+
                 let should_restart = runner_guard.should_restart(exit_code);
 
                 runner_guard.mark_failed();
@@ -379,6 +392,36 @@ impl Orchestrator {
         Ok(())
     }
 
+    /// Process heartbeat from a service
+    pub async fn process_heartbeat(
+        &self,
+        service_name: &str,
+        status: ServiceStatus,
+        _metadata: HashMap<String, String>,
+    ) -> Result<(), OrchestratorError> {
+        let runners = self.runners.read().await;
+        let runner = runners
+            .get(service_name)
+            .ok_or_else(|| OrchestratorError::ServiceNotFound(service_name.to_string()))?
+            .clone();
+        drop(runners);
+
+        let mut runner_guard = runner.lock().await;
+
+        // Update the service health based on the heartbeat status
+        // Healthy and Running statuses indicate the service is responsive
+        let is_healthy = matches!(status, ServiceStatus::Healthy | ServiceStatus::Running);
+        runner_guard.update_health(is_healthy);
+
+        // Broadcast the actual status update to clients
+        let updated_status = runner_guard.get_status();
+        let _ = self
+            .event_tx
+            .send((service_name.to_string(), updated_status));
+
+        Ok(())
+    }
+
     /// Get status of all services
     pub async fn get_snapshot(&self) -> HashMap<String, krill_common::ServiceSnapshot> {
         let mut snapshot = HashMap::new();
@@ -386,16 +429,52 @@ impl Orchestrator {
 
         for (name, runner) in runners.iter() {
             let runner_guard = runner.lock().await;
+            let service_config = self.config.services.get(name);
+
+            // Calculate uptime if service has started
+            let uptime = runner_guard.uptime();
+
+            // Get dependencies
+            let dependencies = service_config
+                .map(|cfg| {
+                    cfg.dependencies
+                        .iter()
+                        .map(|d| d.service_name().to_string())
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            // Get GPU usage
+            let uses_gpu = service_config.map(|cfg| cfg.gpu).unwrap_or(false);
+
+            // Get critical flag
+            let critical = service_config.map(|cfg| cfg.critical).unwrap_or(false);
+
+            // Get restart policy
+            let restart_policy = service_config
+                .map(|cfg| format!("{:?}", cfg.policy.restart))
+                .unwrap_or_else(|| "Unknown".to_string());
+
+            let max_restarts = service_config
+                .map(|cfg| cfg.policy.max_restarts)
+                .unwrap_or(0);
+
             snapshot.insert(
                 name.clone(),
                 krill_common::ServiceSnapshot {
                     status: runner_guard.get_status(),
                     pid: runner_guard.pid(),
-                    uptime: None,
+                    uid: runner_guard.uid().to_string(),
+                    uptime,
                     restart_count: runner_guard.restart_count(),
                     last_error: None,
                     namespace: runner_guard.namespace().to_string(),
                     executor_type: runner_guard.executor_type().to_string(),
+                    dependencies,
+                    uses_gpu,
+                    critical,
+                    restart_policy,
+                    max_restarts,
                 },
             );
         }
