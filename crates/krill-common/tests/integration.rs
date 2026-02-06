@@ -151,7 +151,7 @@ services:
 
     #[test]
     fn config_with_all_execute_types_except_docker() {
-        // Docker is rejected as requires Pro, so we test pixi, ros2, and shell together.
+        // Test pixi, ros2, and shell execute types together.
         let yaml = r#"
 version: "1"
 name: multi

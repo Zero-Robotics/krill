@@ -99,11 +99,6 @@ impl KrillConfig {
                     });
                 }
             }
-
-            // Docker type requires Pro version
-            if matches!(service.execute, ExecuteConfig::Docker { .. }) {
-                return Err(ConfigError::DockerRequiresPro);
-            }
         }
 
         Ok(())
@@ -168,9 +163,6 @@ pub enum ConfigError {
 
     #[error("Service '{service}' depends on unknown service '{dependency}'")]
     UnknownDependency { service: String, dependency: String },
-
-    #[error("Docker execution type requires Krill Pro (coming soon)")]
-    DockerRequiresPro,
 
     #[error("Unsafe shell command: {0}")]
     UnsafeShellCommand(String),
@@ -252,7 +244,7 @@ services:
     }
 
     #[test]
-    fn test_docker_requires_pro() {
+    fn test_docker_config_loads() {
         let yaml = r#"
 version: "1"
 name: test
@@ -266,9 +258,12 @@ services:
         let mut file = NamedTempFile::new().unwrap();
         file.write_all(yaml.as_bytes()).unwrap();
 
-        let result = KrillConfig::from_file(&file.path().to_path_buf());
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Pro"));
+        let config = KrillConfig::from_file(&file.path().to_path_buf()).unwrap();
+        assert_eq!(config.services.len(), 1);
+        assert!(matches!(
+            config.services.get("service1").unwrap().execute,
+            ExecuteConfig::Docker { .. }
+        ));
     }
 
     #[test]

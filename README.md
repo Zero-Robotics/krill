@@ -177,11 +177,10 @@ Krill follows an **open-core model**. The community edition you see here is full
 
 - DAG-based orchestration, health monitoring, restart policies, cascading failures, and safety interception
 - Terminal UI, CLI, and client SDKs (Rust, Python, C++)
-- Pixi, ROS2, and shell execution backends
+- Pixi, ROS2, Docker, and shell execution backends
 
 **Krill Pro** (coming soon) extends the core with enterprise features for larger teams and fleet deployments:
 
-- Docker execution backend
 - Advanced scheduling policies
 - Fleet-wide orchestration and remote management
 - Metrics export and observability integrations

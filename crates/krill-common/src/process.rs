@@ -110,14 +110,18 @@ pub fn build_command(
 
             // Add volume mounts
             for volume in volumes {
-                let mount_spec = if volume.read_only {
+                let mount_spec = if volume.read_only() {
                     format!(
                         "{}:{}:ro",
-                        volume.host.display(),
-                        volume.container.display()
+                        volume.host().display(),
+                        volume.container().display()
                     )
                 } else {
-                    format!("{}:{}", volume.host.display(), volume.container.display())
+                    format!(
+                        "{}:{}",
+                        volume.host().display(),
+                        volume.container().display()
+                    )
                 };
                 cmd.push("-v".to_string());
                 cmd.push(mount_spec);
@@ -272,7 +276,7 @@ pub fn get_process_group(_pid: u32) -> Result<u32, ProcessError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::execute::{PortMapping, VolumeMount};
+    use crate::execute::PortMapping;
 
     #[test]
     fn test_generate_process_name() {
@@ -338,9 +342,11 @@ mod tests {
 
     #[test]
     fn test_build_docker_command() {
+        use crate::execute::VolumeMount;
+
         let config = ExecuteConfig::Docker {
             image: "ros:humble".to_string(),
-            volumes: vec![VolumeMount {
+            volumes: vec![VolumeMount::Detailed {
                 host: PathBuf::from("/data"),
                 container: PathBuf::from("/workspace"),
                 read_only: true,

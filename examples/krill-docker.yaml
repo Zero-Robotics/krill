@@ -1,0 +1,16 @@
+version: "1"
+name: robot
+log_dir: ~/.krill/logs
+
+services:
+  my-service:
+    execute:
+      type: docker
+      image: "nginx:latest" # Required - Docker image name
+      volumes: # Optional - Volume mounts
+        - "./docker:/container/app"
+      ports: # Optional - Port mappings
+        - "8080:80"
+      restart: always # Optional - Restart policy (default: no)
+      privileged: false # Optional - Run in privileged mode (default: false)
+      network: "bridge" # Optional - Network mode

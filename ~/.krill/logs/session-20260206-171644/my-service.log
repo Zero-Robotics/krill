@@ -1,0 +1,44 @@
+[2026-02-06 17:16:45.027] 
+[2026-02-06 17:16:45.027] Hello from Docker!
+[2026-02-06 17:16:45.027] This message shows that your installation appears to be working correctly.
+[2026-02-06 17:16:45.028] 
+[2026-02-06 17:16:45.028] To generate this message, Docker took the following steps:
+[2026-02-06 17:16:45.028]  1. The Docker client contacted the Docker daemon.
+[2026-02-06 17:16:45.028]  2. The Docker daemon pulled the "hello-world" image from the Docker Hub.
+[2026-02-06 17:16:45.028]     (arm64v8)
+[2026-02-06 17:16:45.028]  3. The Docker daemon created a new container from that image which runs the
+[2026-02-06 17:16:45.028]     executable that produces the output you are currently reading.
+[2026-02-06 17:16:45.028]  4. The Docker daemon streamed that output to the Docker client, which sent it
+[2026-02-06 17:16:45.028]     to your terminal.
+[2026-02-06 17:16:45.028] 
+[2026-02-06 17:16:45.028] To try something more ambitious, you can run an Ubuntu container with:
+[2026-02-06 17:16:45.028]  $ docker run -it ubuntu bash
+[2026-02-06 17:16:45.028] 
+[2026-02-06 17:16:45.028] Share images, automate workflows, and more with a free Docker ID:
+[2026-02-06 17:16:45.028]  https://hub.docker.com/
+[2026-02-06 17:16:45.028] 
+[2026-02-06 17:16:45.028] For more examples and ideas, visit:
+[2026-02-06 17:16:45.028]  https://docs.docker.com/get-started/
+[2026-02-06 17:16:45.029] 
+[2026-02-06 17:16:48.843] 
+[2026-02-06 17:16:48.843] Hello from Docker!
+[2026-02-06 17:16:48.843] This message shows that your installation appears to be working correctly.
+[2026-02-06 17:16:48.843] 
+[2026-02-06 17:16:48.843] To generate this message, Docker took the following steps:
+[2026-02-06 17:16:48.844]  1. The Docker client contacted the Docker daemon.
+[2026-02-06 17:16:48.844]  2. The Docker daemon pulled the "hello-world" image from the Docker Hub.
+[2026-02-06 17:16:48.844]     (arm64v8)
+[2026-02-06 17:16:48.844]  3. The Docker daemon created a new container from that image which runs the
+[2026-02-06 17:16:48.844]     executable that produces the output you are currently reading.
+[2026-02-06 17:16:48.844]  4. The Docker daemon streamed that output to the Docker client, which sent it
+[2026-02-06 17:16:48.845]     to your terminal.
+[2026-02-06 17:16:48.845] 
+[2026-02-06 17:16:48.845] To try something more ambitious, you can run an Ubuntu container with:
+[2026-02-06 17:16:48.845]  $ docker run -it ubuntu bash
+[2026-02-06 17:16:48.845] 
+[2026-02-06 17:16:48.845] Share images, automate workflows, and more with a free Docker ID:
+[2026-02-06 17:16:48.845]  https://hub.docker.com/
+[2026-02-06 17:16:48.845] 
+[2026-02-06 17:16:48.845] For more examples and ideas, visit:
+[2026-02-06 17:16:48.845]  https://docs.docker.com/get-started/
+[2026-02-06 17:16:48.845] 

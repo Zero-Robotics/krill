@@ -46,24 +46,104 @@ pub enum ExecuteConfig {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct VolumeMount {
-    pub host: PathBuf,
-    pub container: PathBuf,
-    #[serde(default)]
-    pub read_only: bool,
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum VolumeMount {
+    Detailed {
+        host: PathBuf,
+        container: PathBuf,
+        #[serde(default)]
+        read_only: bool,
+    },
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+impl VolumeMount {
+    pub fn host(&self) -> &PathBuf {
+        match self {
+            VolumeMount::Detailed { host, .. } => host,
+        }
+    }
+
+    pub fn container(&self) -> &PathBuf {
+        match self {
+            VolumeMount::Detailed { container, .. } => container,
+        }
+    }
+
+    pub fn read_only(&self) -> bool {
+        match self {
+            VolumeMount::Detailed { read_only, .. } => *read_only,
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for VolumeMount {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::Error;
+
+        let s = String::deserialize(deserializer)?;
+        let parts: Vec<&str> = s.split(':').collect();
+
+        match parts.len() {
+            2 => Ok(VolumeMount::Detailed {
+                host: PathBuf::from(parts[0]),
+                container: PathBuf::from(parts[1]),
+                read_only: false,
+            }),
+            3 if parts[2] == "ro" => Ok(VolumeMount::Detailed {
+                host: PathBuf::from(parts[0]),
+                container: PathBuf::from(parts[1]),
+                read_only: true,
+            }),
+            _ => Err(Error::custom(format!(
+                "Invalid volume mount format '{}'. Expected 'host:container' or 'host:container:ro'",
+                s
+            ))),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct PortMapping {
     pub host: u16,
     pub container: u16,
-    #[serde(default = "default_protocol")]
     pub protocol: String,
 }
 
-fn default_protocol() -> String {
-    "tcp".to_string()
+impl<'de> Deserialize<'de> for PortMapping {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::Error;
+
+        let s = String::deserialize(deserializer)?;
+        let parts: Vec<&str> = s.split(':').collect();
+
+        if parts.len() != 2 {
+            return Err(Error::custom(format!(
+                "Invalid port mapping format '{}'. Expected 'host:container'",
+                s
+            )));
+        }
+
+        let host = parts[0]
+            .parse::<u16>()
+            .map_err(|_| Error::custom(format!("Invalid host port '{}'", parts[0])))?;
+
+        let container = parts[1]
+            .parse::<u16>()
+            .map_err(|_| Error::custom(format!("Invalid container port '{}'", parts[1])))?;
+
+        Ok(PortMapping {
+            host,
+            container,
+            protocol: "tcp".to_string(),
+        })
+    }
 }
 
 impl ExecuteConfig {
@@ -130,20 +210,80 @@ command: "echo hello"
 
     #[test]
     fn test_docker_with_volumes() {
-        let config = ExecuteConfig::Docker {
-            image: "ros:humble".to_string(),
-            volumes: vec![VolumeMount {
-                host: PathBuf::from("/data"),
-                container: PathBuf::from("/workspace"),
-                read_only: false,
-            }],
-            ports: vec![],
-            privileged: true,
-            network: Some("host".to_string()),
-        };
+        // Test deserialization from YAML string format
+        let yaml = r#"
+type: docker
+image: "ros:humble"
+volumes:
+  - "/data:/workspace"
+privileged: true
+network: "host"
+"#;
+        let config: ExecuteConfig = serde_yaml::from_str(yaml).unwrap();
+        match config {
+            ExecuteConfig::Docker {
+                image,
+                volumes,
+                privileged,
+                network,
+                ..
+            } => {
+                assert_eq!(image, "ros:humble");
+                assert_eq!(volumes.len(), 1);
+                assert_eq!(volumes[0].host(), &PathBuf::from("/data"));
+                assert_eq!(volumes[0].container(), &PathBuf::from("/workspace"));
+                assert!(!volumes[0].read_only());
+                assert!(privileged);
+                assert_eq!(network, Some("host".to_string()));
+            }
+            _ => panic!("Expected Docker variant"),
+        }
+    }
 
-        let yaml = serde_yaml::to_string(&config).unwrap();
-        let deserialized: ExecuteConfig = serde_yaml::from_str(&yaml).unwrap();
-        assert_eq!(config, deserialized);
+    #[test]
+    fn test_docker_volume_string_parsing() {
+        let yaml = r#"
+type: docker
+image: nginx:latest
+volumes:
+  - "/host/path:/container/path"
+  - "/data:/app:ro"
+"#;
+        let config: ExecuteConfig = serde_yaml::from_str(yaml).unwrap();
+        match config {
+            ExecuteConfig::Docker { volumes, .. } => {
+                assert_eq!(volumes.len(), 2);
+                assert_eq!(volumes[0].host(), &PathBuf::from("/host/path"));
+                assert_eq!(volumes[0].container(), &PathBuf::from("/container/path"));
+                assert!(!volumes[0].read_only());
+                assert_eq!(volumes[1].host(), &PathBuf::from("/data"));
+                assert_eq!(volumes[1].container(), &PathBuf::from("/app"));
+                assert!(volumes[1].read_only());
+            }
+            _ => panic!("Expected Docker variant"),
+        }
+    }
+
+    #[test]
+    fn test_docker_port_string_parsing() {
+        let yaml = r#"
+type: docker
+image: nginx:latest
+ports:
+  - "8080:80"
+  - "9090:9000"
+"#;
+        let config: ExecuteConfig = serde_yaml::from_str(yaml).unwrap();
+        match config {
+            ExecuteConfig::Docker { ports, .. } => {
+                assert_eq!(ports.len(), 2);
+                assert_eq!(ports[0].host, 8080);
+                assert_eq!(ports[0].container, 80);
+                assert_eq!(ports[0].protocol, "tcp");
+                assert_eq!(ports[1].host, 9090);
+                assert_eq!(ports[1].container, 9000);
+            }
+            _ => panic!("Expected Docker variant"),
+        }
     }
 }
