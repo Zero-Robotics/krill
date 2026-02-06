@@ -539,20 +539,17 @@ working_dir: /opt/app
 type: docker
 image: nginx:latest
 ports:
-  - host: 8080
-    container: 80
-  - host: 8443
-    container: 443
-    protocol: udp
+  - "8080:80"
+  - "8443:8443"
 "#;
         let config: ExecuteConfig = serde_yaml::from_str(yaml).unwrap();
         match config {
             ExecuteConfig::Docker { ports, .. } => {
                 assert_eq!(ports.len(), 2);
-                assert_eq!(ports[0].host, 8080);
-                assert_eq!(ports[0].container, 80);
-                assert_eq!(ports[0].protocol, "tcp"); // default
-                assert_eq!(ports[1].protocol, "udp");
+                assert_eq!(ports[0].host.to_string(), "8080");
+                assert_eq!(ports[0].container.to_string(), "80");
+                assert_eq!(ports[1].host.to_string(), "8443");
+                assert_eq!(ports[1].container.to_string(), "8443");
             }
             _ => panic!("Expected Docker variant"),
         }

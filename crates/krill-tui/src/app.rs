@@ -95,7 +95,7 @@ impl App {
             }
             ServerMessage::LogLine { service, line } => {
                 // Store logs per-service
-                let service_logs = self.logs.entry(service.clone()).or_insert_with(Vec::new);
+                let service_logs = self.logs.entry(service.clone()).or_default();
                 service_logs.push(line);
 
                 // Keep only last 2000 lines per service
@@ -145,7 +145,7 @@ impl App {
             ServerMessage::LogHistory { service, lines } => {
                 // Prepend history to existing logs
                 if let Some(svc) = service {
-                    let service_logs = self.logs.entry(svc).or_insert_with(Vec::new);
+                    let service_logs = self.logs.entry(svc).or_default();
                     // Insert history at the beginning
                     let mut new_logs = lines;
                     new_logs.append(service_logs);
@@ -280,7 +280,7 @@ impl App {
             };
             self.message_tx
                 .send(msg)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+                .map_err(|e| io::Error::other(e.to_string()))?;
         }
         Ok(())
     }
@@ -293,7 +293,7 @@ impl App {
             };
             self.message_tx
                 .send(msg)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+                .map_err(|e| io::Error::other(e.to_string()))?;
         }
         Ok(())
     }
@@ -310,7 +310,7 @@ impl App {
         };
         self.message_tx
             .send(msg)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
         self.should_quit = true;
         Ok(())
     }
@@ -324,7 +324,7 @@ impl App {
         let msg = ClientMessage::GetSnapshot;
         self.message_tx
             .send(msg)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| io::Error::other(e.to_string()))?;
         Ok(())
     }
 

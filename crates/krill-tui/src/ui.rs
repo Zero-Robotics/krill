@@ -85,7 +85,7 @@ fn render_header(frame: &mut Frame, app: &App, area: Rect) {
     } else {
         STATUS_HEALTHY
     };
-    
+
     let memory_percent = if app.memory_total_mb > 0 {
         (app.memory_used_mb as f32 / app.memory_total_mb as f32) * 100.0
     } else {
@@ -100,15 +100,13 @@ fn render_header(frame: &mut Frame, app: &App, area: Rect) {
     };
 
     // Line 1: Krill branding
-    let line1 = Line::from(vec![
-        Span::styled(
-            " Krill",
-            Style::default()
-                .fg(Color::Black)
-                .bg(STATUS_HEALTHY)
-                .add_modifier(Modifier::BOLD),
-        ),
-    ]);
+    let line1 = Line::from(vec![Span::styled(
+        " Krill",
+        Style::default()
+            .fg(Color::Black)
+            .bg(STATUS_HEALTHY)
+            .add_modifier(Modifier::BOLD),
+    )]);
 
     // Line 2: Recipe and services
     let line2 = Line::from(vec![

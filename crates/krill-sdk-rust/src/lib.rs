@@ -76,7 +76,7 @@ impl KrillClient {
         stream
             .write_all(format!("{}\n", json).as_bytes())
             .await
-            .map_err(|e| KrillError::Io(e))?;
+            .map_err(KrillError::Io)?;
 
         Ok(())
     }
