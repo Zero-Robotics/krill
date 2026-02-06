@@ -38,13 +38,91 @@ just install
 
 
 ### Create a recipe
+
+Here's a complete example orchestrating a ROS2 robot navigation stack:
+
 ```yaml
+version: "1"
+name: autonomous-robot
+log_dir: ~/.krill/logs
+
+env:
+  ROS_DOMAIN_ID: "42"
+  ROS_LOCALHOST_ONLY: "0"
+
 services:
-  - name: my-service
-    image: my-image
-    ports:
-      - 8080:8080
+  # Hardware drivers start first
+  lidar:
+    execute:
+      type: ros2
+      package: ldlidar_ros2
+      launch_file: ldlidar.launch.py
+    health_check:
+      type: tcp
+      port: 4048
+    policy:
+      restart: on-failure
+      max_restarts: 3
+
+  camera:
+    execute:
+      type: ros2
+      package: realsense2_camera
+      launch_file: rs_launch.py
+      launch_args:
+        enable_depth: "true"
+        enable_color: "true"
+    dependencies:
+      - lidar
+    health_check:
+      type: tcp
+      port: 8554
+
+  # SLAM for mapping and localization
+  slam:
+    execute:
+      type: ros2
+      package: slam_toolbox
+      launch_file: online_async_launch.py
+    dependencies:
+      - lidar: healthy
+      - camera: healthy
+    health_check:
+      type: heartbeat
+      timeout: 5s
+
+  # Navigation stack
+  navigation:
+    execute:
+      type: ros2
+      package: nav2_bringup
+      launch_file: navigation_launch.py
+    dependencies:
+      - slam: healthy
+    critical: true  # If navigation fails, stop everything
+    health_check:
+      type: http
+      port: 8080
+      path: /health
+    policy:
+      restart: always
+      restart_delay: 2s
+
+  # Web dashboard
+  dashboard:
+    execute:
+      type: docker
+      image: ghcr.io/robotics/web-ui:latest
+      ports:
+        - "3000:3000"
+      volumes:
+        - "./config:/app/config:ro"
+      network: host
+    dependencies:
+      - navigation: started
 ```
+
+See [Configuration Guide](docs/configuration.md) for all available options.
 
 ### Running krill
 
@@ -206,6 +284,16 @@ We believe the core orchestrator should always be free and community-driven. Rev
 | q | Quit TUI |
 | h | Help |
 
+## Documentation
+
+Comprehensive guides and references:
+
+- **[Quick Reference](docs/quick-reference.md)** - Fast lookup for common configurations
+- **[Configuration Guide](docs/configuration.md)** - Complete recipe file reference
+- **[Health Checks](docs/health-checks.md)** - Service monitoring patterns
+- **[Dependencies](docs/dependencies.md)** - DAG orchestration strategies
+- **[Documentation Index](docs/README.md)** - All documentation
+
 ## Development & Safety
 
 Building from source:
@@ -213,6 +301,7 @@ Building from source:
 just check
 just build
 ```
+
 **Safety Design**
 
 - **Shell command validation** - Rejects pipes, redirections, command substitution
