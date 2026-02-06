@@ -1,7 +1,7 @@
 # Krill - Process orchestrator for Robotics
 
 <p align="center">
-  <img src="/assets/krilly.png" alt="Krilly" width="220">
+  <img src="/assets/banner-krill.png" alt="Krill-banner" width="220">
 </p>
 
 **Professional-grade process orchestrator for robotics systems** built in Rust.
@@ -331,72 +331,6 @@ The boundary is simple: if you're running services on a single robot or dev mach
 
 We believe the core orchestrator should always be free and community-driven. Revenue from Pro funds continued development of both editions.
 
-## Contributing
-
-Contributions are welcome and encouraged! Here's how to get involved.
-
-### Getting Started
-
-1. **Fork and clone** the repository
-2. **Install prerequisites**: Rust 1.70+ and a Unix-like OS (Linux or macOS)
-3. **Build and test** to make sure everything works:
-   ```bash
-   just check   # runs fmt-check, lint, and test
-   ```
-
-### Development Workflow
-
-```bash
-# Format your code
-just fmt
-
-# Run the linter
-just lint
-
-# Run the full test suite
-just test
-
-# Build documentation
-just doc
-```
-
-### What to Contribute
-
-- **Bug fixes** - Found a bug? Open an issue first, then submit a PR
-- **Tests** - Additional test coverage is always appreciated
-- **Documentation** - Improvements to docs, examples, and error messages
-- **New health check types** - TCP, HTTP, script, or custom checkers
-- **SDK improvements** - Better ergonomics for the Rust, Python, and C++ SDKs
-- **New execution backends** - Community backends beyond pixi/ros2/shell (Docker is reserved for Pro)
-
-### Submitting a Pull Request
-
-1. Create a feature branch from `main`
-2. Make your changes in small, focused commits
-3. Ensure `just check` passes (formatting, linting, and tests)
-4. Write tests for any new functionality
-5. Open a PR with a clear description of the change and its motivation
-
-### Code Guidelines
-
-- Follow existing patterns and naming conventions in the codebase
-- Keep shell command validation strict - safety is a core design principle
-- New public APIs should be documented
-- Prefer returning `Result` types over panicking
-
-### Scope Boundaries
-
-To keep the open-core model sustainable, please note:
-
-- **Docker execution** and fleet management features are part of Krill Pro and not accepted as community contributions
-- If you're unsure whether a feature belongs in the open-source edition, open an issue to discuss before writing code
-
-### Reporting Issues
-
-- Use GitHub Issues for bug reports and feature requests
-- Include your OS, Rust version, and a minimal reproduction when reporting bugs
-- For security vulnerabilities, please report privately rather than opening a public issue
-
 ## Roadmap
 
 - [x] Phase 0: Workspace setup
@@ -404,9 +338,10 @@ To keep the open-core model sustainable, please note:
 - [x] Phase 3-4: Process management and health checks
 - [x] Phase 5-6: Daemon orchestrator, IPC, and logging
 - [x] Phase 7: Terminal UI
-- [x] Phase 8: SDKs (Rust + C++)
-- [ ] Phase 9: Advanced features (log rotation, metrics export)
-- [ ] Phase 10: Krill Pro (Docker support, advanced policies)
+- [x] Phase 8: SDKs (Rust + C++ + Python)
+- [ ] Phase 9: Advanced features (log rotation, metrics export, always_alive)
+- [ ] Phase 10: Docker support (Docker support)
+- [ ] Phase 11: Docker pro (advanced policies)
 
 ## Acknowledgments
 
