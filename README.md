@@ -142,6 +142,7 @@ Stop krill with the command:
 krill down
 ```
 ## How it looks
+![Krill in action](assets/krill-demo.png)
 
 <video src="assets/krill-demo.mov" width="600" controls>
     Krill in action
