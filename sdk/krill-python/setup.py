@@ -12,8 +12,10 @@ setup(
     description="Python client library for Krill process orchestrator",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    author="Krill Contributors",
+    author="Tommaso Pardi",
+    author_email="",  # Add your email if desired
     license="Apache-2.0",
+    license_files=["../../LICENSE.md"],
     py_modules=["krill"],
     python_requires=">=3.7",
     classifiers=[
