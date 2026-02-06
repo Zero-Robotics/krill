@@ -143,8 +143,9 @@ krill down
 ```
 ## How it looks
 
-add demo video here
-<https://github.com/krill-robotics/krill-demo>
+<video src="assets/krill-demo.mov" width="600" controls>
+    Krill in action
+</video>
 
 
 ## Why krill?
