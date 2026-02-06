@@ -7,7 +7,7 @@
 **Professional-grade process orchestrator for robotics systems** built in Rust.
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
-[![Tests](https://img.shields.io/badge/tests-55%20passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-155%20passing-brightgreen)]()
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)]()
 
 ## Overview
@@ -140,6 +140,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+### Python SDK
+
+```python
+from krill import KrillClient
+
+with KrillClient("my-service") as client:
+    while True:
+        # Do work...
+        
+        # Send heartbeat
+        client.heartbeat()
+        
+        time.sleep(1)
+```
+
+**Async version:**
+
+```python
+import asyncio
+from krill import AsyncKrillClient
+
+async def main():
+    client = await AsyncKrillClient.connect("my-service")
+    
+    while True:
+        # Do work...
+        
+        # Send heartbeat
+        await client.heartbeat()
+        
+        await asyncio.sleep(1)
+
+asyncio.run(main())
+```
+
 ### C++ SDK (Header-only)
 
 ```cpp
@@ -201,13 +236,15 @@ krill/
 │   ├── krill-common/      # Shared types and protocols
 │   ├── krill-daemon/      # Daemon orchestrator
 │   ├── krill-tui/         # Terminal UI
-│   └── krill-sdk-rust/    # Rust client SDK
+│   ├── krill-sdk-rust/    # Rust client SDK
+│   └── krill-cli/         # Unified CLI
 ├── sdk/
-│   └── krill-cpp/         # C++ header-only SDK
+│   ├── krill-cpp/         # C++ header-only SDK
+│   └── krill-python/      # Python SDK (sync + async)
 ├── schemas/
 │   └── krill.schema.json  # JSON schema for configs
 ├── examples/
-│   └── robot.yaml        # Example configuration
+│   └── krill.yaml         # Example configuration
 └── tests/
     └── integration/       # Integration tests
 ```
@@ -274,9 +311,91 @@ cargo test --package krill-common config::
 
 Apache-2.0
 
+## Open-Core Philosophy
+
+Krill follows an **open-core model**. The community edition you see here is fully open-source under the Apache-2.0 license and covers everything needed to orchestrate robotics services in production:
+
+- DAG-based orchestration, health monitoring, restart policies, cascading failures, and safety interception
+- Terminal UI, CLI, and client SDKs (Rust, Python, C++)
+- Pixi, ROS2, and shell execution backends
+
+**Krill Pro** (coming soon) extends the core with enterprise features for larger teams and fleet deployments:
+
+- Docker execution backend
+- Advanced scheduling policies
+- Fleet-wide orchestration and remote management
+- Metrics export and observability integrations
+- Priority support
+
+The boundary is simple: if you're running services on a single robot or dev machine, the open-source edition has you covered. Pro targets multi-robot fleets and enterprise operational needs.
+
+We believe the core orchestrator should always be free and community-driven. Revenue from Pro funds continued development of both editions.
+
 ## Contributing
 
-Contributions welcome! Please read our contributing guidelines and code of conduct.
+Contributions are welcome and encouraged! Here's how to get involved.
+
+### Getting Started
+
+1. **Fork and clone** the repository
+2. **Install prerequisites**: Rust 1.70+ and a Unix-like OS (Linux or macOS)
+3. **Build and test** to make sure everything works:
+   ```bash
+   just check   # runs fmt-check, lint, and test
+   ```
+
+### Development Workflow
+
+```bash
+# Format your code
+just fmt
+
+# Run the linter
+just lint
+
+# Run the full test suite
+just test
+
+# Build documentation
+just doc
+```
+
+### What to Contribute
+
+- **Bug fixes** - Found a bug? Open an issue first, then submit a PR
+- **Tests** - Additional test coverage is always appreciated
+- **Documentation** - Improvements to docs, examples, and error messages
+- **New health check types** - TCP, HTTP, script, or custom checkers
+- **SDK improvements** - Better ergonomics for the Rust, Python, and C++ SDKs
+- **New execution backends** - Community backends beyond pixi/ros2/shell (Docker is reserved for Pro)
+
+### Submitting a Pull Request
+
+1. Create a feature branch from `main`
+2. Make your changes in small, focused commits
+3. Ensure `just check` passes (formatting, linting, and tests)
+4. Write tests for any new functionality
+5. Open a PR with a clear description of the change and its motivation
+
+### Code Guidelines
+
+- Follow existing patterns and naming conventions in the codebase
+- Keep shell command validation strict - safety is a core design principle
+- New public APIs should be documented
+- Prefer returning `Result` types over panicking
+
+### Scope Boundaries
+
+To keep the open-core model sustainable, please note:
+
+- **Docker execution** and fleet management features are part of Krill Pro and not accepted as community contributions
+- If you're unsure whether a feature belongs in the open-source edition, open an issue to discuss before writing code
+
+### Reporting Issues
+
+- Use GitHub Issues for bug reports and feature requests
+- Include your OS, Rust version, and a minimal reproduction when reporting bugs
+- For security vulnerabilities, please report privately rather than opening a public issue
 
 ## Roadmap
 

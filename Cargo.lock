@@ -598,6 +598,7 @@ dependencies = [
  "krill-daemon",
  "krill-tui",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -646,6 +647,7 @@ dependencies = [
  "krill-common",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror",
  "tokio",
 ]

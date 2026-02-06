@@ -47,11 +47,3 @@
 # Install the binaries locally
 @install:
     cargo install --path crates/krill-cli
-
-# Watch for changes and rebuild
-@watch:
-    cargo watch -x 'build --workspace'
-
-# Watch and run tests
-@watch-test:
-    cargo watch -x 'test --workspace'

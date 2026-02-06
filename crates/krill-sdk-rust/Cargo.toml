@@ -13,3 +13,7 @@ tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+tempfile = "3.10"
+krill-common = { path = "../krill-common" }

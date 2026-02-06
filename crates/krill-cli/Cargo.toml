@@ -3,6 +3,10 @@ name = "krill-cli"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "krill_cli"
+path = "src/lib.rs"
+
 [[bin]]
 name = "krill"
 path = "src/main.rs"
@@ -19,3 +23,7 @@ serde_json = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dirs = "5"
+
+[dev-dependencies]
+tempfile = "3.10"
+tokio = { version = "1", features = ["full"] }
