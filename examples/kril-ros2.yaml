@@ -1,0 +1,9 @@
+version: "1"
+name: robot
+log_dir: ~/.krill/logs
+
+env:
+  ROBOT_ID: robot-001
+  ROS_DOMAIN_ID: "42"
+
+services: TODO

@@ -6,11 +6,11 @@
 # - Heartbeat-based health checks using the Krill Python SDK
 
 version: "1"
-name: robot-example
+name: krill-pixi
 
 # Global environment variables shared by all services
 env:
-  ROBOT_ID: "robot-001"
+  ROBOT_ID: "pixi-001"
   LOG_LEVEL: "info"
 
 # Service definitions
@@ -38,9 +38,9 @@ services:
     # Policy: Always restart, unlimited attempts
     policy:
       restart: always
-      max_restarts: 0          # 0 = unlimited restarts
-      restart_delay: 5s        # Wait 5s between restart attempts
-      stop_timeout: 10s        # Graceful shutdown timeout
+      max_restarts: 0 # 0 = unlimited restarts
+      restart_delay: 5s # Wait 5s between restart attempts
+      stop_timeout: 10s # Graceful shutdown timeout
 
   # Service 2: Data Analyzer (depends on data-processor)
   # Analyzes processed data and generates insights
@@ -65,7 +65,7 @@ services:
     # Policy: Restart on failure, max 3 attempts
     policy:
       restart: on-failure
-      max_restarts: 3          # Give up after 3 failed restarts
+      max_restarts: 3 # Give up after 3 failed restarts
       restart_delay: 5s
       stop_timeout: 10s
 
@@ -89,14 +89,15 @@ services:
     # Heartbeat health check
     health_check:
       type: heartbeat
-      timeout: 15s             # Slightly longer timeout for critical service
+      timeout: 15s # Slightly longer timeout for critical service
 
     # Policy: Restart on failure, max 3 attempts
     policy:
       restart: on-failure
       max_restarts: 3
       restart_delay: 5s
-      stop_timeout: 15s        # Longer graceful shutdown for critical service
+      stop_timeout: 15s # Longer graceful shutdown for critical service
+
 
 # Service implementation notes:
 #

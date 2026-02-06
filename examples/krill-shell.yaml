@@ -6,8 +6,8 @@ services:
   counter1:
     execute:
       type: shell
-      command: bash examples/scripts/counter1.sh
-      working_dir: /Users/tommaso/Documents/dev/krill
+      command: bash counter1.sh
+      working_dir: ./scripts/
     policy:
       restart: always
     health_check:
@@ -18,8 +18,8 @@ services:
   counter2:
     execute:
       type: shell
-      command: bash examples/scripts/counter2.sh
-      working_dir: /Users/tommaso/Documents/dev/krill
+      command: bash counter2.sh
+      working_dir: ./scripts/
     dependencies:
       - counter1
     policy:
@@ -32,8 +32,8 @@ services:
   fast_counter:
     execute:
       type: shell
-      command: bash examples/scripts/fast_counter.sh
-      working_dir: /Users/tommaso/Documents/dev/krill
+      command: bash fast_counter.sh
+      working_dir: ./scripts/
     policy:
       restart: always
     health_check:
@@ -44,8 +44,8 @@ services:
   logger:
     execute:
       type: shell
-      command: bash examples/scripts/logger.sh
-      working_dir: /Users/tommaso/Documents/dev/krill
+      command: bash logger.sh
+      working_dir: ./scripts/
     dependencies:
       - counter1
       - counter2
@@ -59,8 +59,8 @@ services:
   failing_service:
     execute:
       type: shell
-      command: bash examples/scripts/failing.sh
-      working_dir: /Users/tommaso/Documents/dev/krill
+      command: bash failing.sh
+      working_dir: ./scripts/
     policy:
       restart: on-failure
       max_restarts: 3
