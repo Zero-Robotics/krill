@@ -6,11 +6,13 @@ Welcome to the Krill documentation! Here you'll find everything you need to orch
 
 - **[Quick Reference](quick-reference.md)** - Fast lookup for common configurations
 - **[Configuration Guide](configuration.md)** - Complete reference for recipe files
+- **[SDK Installation](sdk-installation.md)** - Install and use Krill SDKs (Python, Rust, C++)
 
 ## In-Depth Guides
 
 - **[Health Checks Guide](health-checks.md)** - Monitor service health effectively
 - **[Dependencies Guide](dependencies.md)** - Build reliable orchestration graphs
+- **[SDK Installation](sdk-installation.md)** - SDK setup and usage examples
 
 ## Core Concepts
 

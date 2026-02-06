@@ -290,6 +290,7 @@ Comprehensive guides and references:
 
 - **[Quick Reference](docs/quick-reference.md)** - Fast lookup for common configurations
 - **[Configuration Guide](docs/configuration.md)** - Complete recipe file reference
+- **[SDK Installation](docs/sdk-installation.md)** - Install and use SDKs (Python, Rust, C++)
 - **[Health Checks](docs/health-checks.md)** - Service monitoring patterns
 - **[Dependencies](docs/dependencies.md)** - DAG orchestration strategies
 - **[Documentation Index](docs/README.md)** - All documentation
