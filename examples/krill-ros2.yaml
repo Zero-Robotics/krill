@@ -6,4 +6,36 @@ env:
   ROBOT_ID: robot-001
   ROS_DOMAIN_ID: "42"
 
-services: TODO testing
+services:
+  ros_talker:
+    execute:
+      type: pixi
+      task: talker
+      working_dir: ./ros2
+
+    dependencies: []
+
+    critical: true
+
+    policy:
+      restart: always
+      max_restarts: 3
+      restart_delay: 5s
+      stop_timeout: 10s
+
+  ros_listener:
+    execute:
+      type: pixi
+      task: listener
+      working_dir: ./ros2
+
+    dependencies:
+      - ros_talker
+
+    critical: false
+
+    policy:
+      restart: always
+      max_restarts: 3
+      restart_delay: 5s
+      stop_timeout: 10s
