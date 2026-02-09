@@ -1,0 +1,14 @@
+[workspace]
+authors = ["Tommaso Pardi <tommaso.pardi@gmail.com>"]
+channels = ["conda-forge", "robostack-jazzy"]
+name = "ros2-pubsub"
+platforms = ["osx-arm64", "linux-64"]
+version = "0.1.0"
+
+[tasks]
+talker = "ros2 run demo_nodes_cpp talker"
+listener = "ros2 run demo_nodes_cpp listener"
+
+[dependencies]
+ros-jazzy-ros-core = ">=0.11.0,<0.12"
+ros-jazzy-demo-nodes-cpp = ">=0.33.9,<0.34"
