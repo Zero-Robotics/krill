@@ -19,11 +19,13 @@ anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 clap.workspace = true
-nix.workspace = true
 chrono.workspace = true
 uuid.workspace = true
 dirs.workspace = true
 futures.workspace = true
+nix = { version = "0.31.1", features = ["signal", "process", "fs"] }
+os_pipe = "1.2.3"
+
 
 [dev-dependencies]
 tempfile = "3.10"
