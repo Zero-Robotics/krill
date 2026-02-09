@@ -99,6 +99,20 @@ fn render_header(frame: &mut Frame, app: &App, area: Rect) {
         STATUS_HEALTHY
     };
 
+    let disk_percent = if app.disk_total_gb > 0.0 {
+        (app.disk_usage_gb as f32 / app.disk_total_gb as f32) * 100.0
+    } else {
+        0.0
+    };
+
+    let disk_color = if disk_percent > 95.0 {
+        STATUS_FAILED
+    } else if disk_percent > 50.0 {
+        STATUS_RUNNING
+    } else {
+        STATUS_HEALTHY
+    };
+
     // Line 1: Krill branding
     let line1 = Line::from(vec![Span::styled(
         " Krill",
@@ -151,7 +165,7 @@ fn render_header(frame: &mut Frame, app: &App, area: Rect) {
         Span::styled("DISK: ", Style::default().fg(DIM_FG)),
         Span::styled(
             format!("{:.2}GB/{:.2}GB", app.disk_usage_gb, app.disk_total_gb),
-            Style::default().fg(DIM_FG),
+            Style::default().fg(disk_color),
         ),
     ]);
 
