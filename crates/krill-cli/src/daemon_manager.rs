@@ -82,8 +82,6 @@ pub async fn start_daemon_background(
 }
 
 pub async fn read_startup_result(read_fd: RawFd) -> Result<StartupMessage> {
-    use tokio::io::AsyncBufReadExt;
-
     let file = unsafe { tokio::fs::File::from_raw_fd(read_fd) };
     let mut reader = tokio::io::BufReader::new(file);
     let mut line = String::new();

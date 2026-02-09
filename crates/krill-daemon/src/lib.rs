@@ -22,6 +22,15 @@ pub enum StartupMessage {
     Error(StartupError),
 }
 
+impl fmt::Display for StartupMessage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            StartupMessage::Success => write!(f, "Startup successful"),
+            StartupMessage::Error(err) => write!(f, "Startup error: {}", err),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct StartupError {
     pub category: ErrorCategory,
