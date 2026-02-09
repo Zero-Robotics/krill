@@ -22,8 +22,8 @@ pub use health::{validate_gpu_available, GpuRequirement, HealthChecker, HealthEr
 pub use ipc::{ClientMessage, CommandAction, ServerMessage, ServiceSnapshot, ServiceStatus};
 pub use policy::{PolicyConfig, RestartPolicy};
 pub use process::{
-    build_command, generate_process_name, get_process_group, get_stop_command, get_working_dir,
-    kill_process_group, setup_process_group, ProcessError,
+    build_command, find_executable, generate_process_name, get_process_group, get_stop_command,
+    get_working_dir, kill_process_group, setup_process_group, ProcessError,
 };
 pub use validation::validate_shell_command;
 

@@ -1,8 +1,10 @@
 // krill daemon - Run the daemon directly (used internally)
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use krill_common::KrillConfig;
-use krill_daemon::{IpcServer, LogStore, Orchestrator};
+use krill_daemon::{
+    ErrorCategory, IpcServer, LogStore, Orchestrator, StartupError, StartupMessage,
+};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -23,23 +25,91 @@ pub struct DaemonArgs {
     /// IPC socket path
     #[arg(long, default_value = "/tmp/krill.sock")]
     pub socket: PathBuf,
+
+    // File descriptor for startup error communication
+    #[arg(long, hide = true)]
+    pub startup_pipe_fd: Option<i32>,
 }
 
 pub async fn execute(args: DaemonArgs) -> Result<()> {
-    info!("Starting krill-daemon");
+    info!("Pre-flight krill-daemon checks");
+    use std::io::Write;
+    use std::os::fd::FromRawFd;
+
+    // Open startup pipe if provided
+    let mut startup_pipe = args
+        .startup_pipe_fd
+        .map(|fd| unsafe { std::fs::File::from_raw_fd(fd) });
+
+    // Helper to send error and exit
+    let send_error = |pipe: &mut Option<std::fs::File>, category, message, path, hint| {
+        let error = StartupError {
+            category,
+            message,
+            path,
+            hint,
+        };
+        let msg = StartupMessage::Error(error);
+        if let Some(pipe) = pipe {
+            let json = serde_json::to_string(&msg).unwrap();
+            let _ = writeln!(pipe, "{}", json);
+            let _ = pipe.flush(); // Ensure message is sent before exit
+        } else {
+            eprintln!("Startup error (no pipe): {}", msg);
+        }
+        std::process::exit(1);
+    };
 
     // Load configuration
     info!("Loading configuration from {:?}", args.config);
-    let config = KrillConfig::from_file(&args.config).context("Failed to load configuration")?;
+    let config = match KrillConfig::from_file(&args.config) {
+        Ok(c) => c,
+        Err(e) => {
+            send_error(
+                &mut startup_pipe,
+                ErrorCategory::Config,
+                format!("Failed to load configuration: {}", e),
+                Some(args.config.clone()),
+                "Check that the file exists, is valid Yaml, and you have read permissions"
+                    .to_string(),
+            );
+            unreachable!();
+        }
+    };
 
     info!("Loaded workspace: {}", config.name);
     info!("Services: {}", config.services.len());
 
     // Initialize log store
     let log_dir = args.log_dir.or(config.log_dir.clone());
-    let log_store = LogStore::new(log_dir).context("Failed to initialize log store")?;
+    let log_store = match LogStore::new(log_dir.clone()) {
+        Ok(ls) => ls,
+        Err(e) => {
+            send_error(
+                &mut startup_pipe,
+                ErrorCategory::LogStore,
+                format!("Failed to initialize log store: {}", e),
+                log_dir.clone(),
+                "Check that the directory exists and you have write permissions".to_string(),
+            );
+            unreachable!();
+        }
+    };
 
     info!("Logs directory: {:?}", log_store.session_dir());
+
+    if let Err(e) = init_daemon_tracing(&log_store) {
+        send_error(
+            &mut startup_pipe,
+            ErrorCategory::LogStore,
+            format!("Failed to initialize tracing: {}", e),
+            Some(log_store.session_dir().join("krill.log")),
+            "Check that the log directory is writable".to_string(),
+        );
+        unreachable!();
+    }
+    info!("Krill daemon starting");
+    info!("Workspace: {}", config.name);
 
     // Create event channel
     let (event_tx, mut event_rx) = mpsc::unbounded_channel();
@@ -60,21 +130,51 @@ pub async fn execute(args: DaemonArgs) -> Result<()> {
 
     // Create orchestrator with log channel
     let orchestrator = Arc::new(
-        Orchestrator::with_log_tx(config, event_tx.clone(), Some(log_tx))
-            .context("Failed to create orchestrator")?,
+        match Orchestrator::with_log_tx(config, event_tx.clone(), Some(log_tx)) {
+            Ok(o) => o,
+            Err(e) => {
+                send_error(
+                    &mut startup_pipe,
+                    ErrorCategory::Orchestrator,
+                    format!("Failed to initialize orchestrator: {}", e),
+                    None,
+                    "Check if you have permission to create channels".to_string(),
+                );
+                unreachable!();
+            }
+        },
     );
 
     // Create IPC server with heartbeat channel and log store
     let ipc_server = Arc::new(
-        IpcServer::with_heartbeat_tx(
+        match IpcServer::with_heartbeat_tx(
             args.socket.clone(),
             command_tx,
             snapshot_req_tx,
             Some(heartbeat_tx),
             Some(Arc::clone(&log_store)),
-        )
-        .context("Failed to create IPC server")?,
+        ) {
+            Ok(is) => is,
+            Err(e) => {
+                send_error(
+                    &mut startup_pipe,
+                    ErrorCategory::IpcServer,
+                    format!("Failed to initialize IPC server: {}", e),
+                    None,
+                    "Check if you have permission to create IPC Server".to_string(),
+                );
+                unreachable!();
+            }
+        },
     );
+
+    // Send success message - daemon infrastructure is ready
+    // (Service startup happens asynchronously and may take time)
+    if let Some(mut pipe) = startup_pipe.take() {
+        let msg = StartupMessage::Success;
+        let _ = writeln!(pipe, "{}", serde_json::to_string(&msg).unwrap());
+        drop(pipe);
+    }
 
     // Spawn IPC server task
     let ipc_server_clone = Arc::clone(&ipc_server);
@@ -174,10 +274,11 @@ pub async fn execute(args: DaemonArgs) -> Result<()> {
     info!("Starting all services...");
     if let Err(e) = orchestrator.start_all().await {
         error!("Failed to start services: {}", e);
-        return Err(e.into());
+        // Note: Service failures are logged and visible in TUI/logs
+        // Daemon infrastructure is still running
     }
 
-    info!("All services started successfully");
+    info!("All services initialization complete");
     info!("Daemon running. Press Ctrl+C to stop.");
 
     // Wait for shutdown signal
@@ -210,5 +311,28 @@ pub async fn execute(args: DaemonArgs) -> Result<()> {
     log_handle.abort();
 
     info!("Daemon stopped");
+    Ok(())
+}
+
+fn init_daemon_tracing(log_store: &LogStore) -> Result<()> {
+    use tracing_subscriber::{fmt, EnvFilter};
+
+    let daemon_log_path = log_store.session_dir().join("krill.log");
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(daemon_log_path)?;
+
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+
+    let subscriber = fmt()
+        .with_writer(file)
+        .with_target(false)
+        .with_ansi(false)
+        .with_env_filter(filter)
+        .finish();
+
+    tracing::subscriber::set_global_default(subscriber)?;
+
     Ok(())
 }

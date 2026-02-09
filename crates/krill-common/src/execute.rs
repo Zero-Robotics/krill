@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
+#[serde(deny_unknown_fields)]
 pub enum ExecuteConfig {
     Pixi {
         task: String,

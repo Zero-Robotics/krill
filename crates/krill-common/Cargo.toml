@@ -14,7 +14,7 @@ serde_yaml.workspace = true
 thiserror.workspace = true
 chrono.workspace = true
 humantime-serde.workspace = true
-nix.workspace = true
+nix = { version = "0.31.1", features = ["signal", "process", "fs"] }
 
 [dev-dependencies]
 tempfile = "3.10"

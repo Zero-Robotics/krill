@@ -1,6 +1,8 @@
 // Daemon lifecycle management
 
 use anyhow::{anyhow, Context, Result};
+use krill_daemon::StartupMessage;
+use std::os::fd::{FromRawFd, RawFd};
 use std::path::Path;
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -33,6 +35,13 @@ pub async fn start_daemon_background(
 ) -> Result<()> {
     info!("Starting daemon in background...");
 
+    use std::os::fd::AsRawFd;
+
+    // Create pipe for startup communicaiton
+    let (read_fd, write_fd) = os_pipe::pipe().context("Failed to create pipe")?;
+
+    let write_fd_raw = write_fd.as_raw_fd();
+
     // Get current executable path
     let current_exe = std::env::current_exe()?;
 
@@ -42,10 +51,17 @@ pub async fn start_daemon_background(
         .arg("--config")
         .arg(config_path)
         .arg("--socket")
-        .arg(socket_path);
+        .arg(socket_path)
+        .arg("--startup-pipe-fd")
+        .arg(write_fd_raw.to_string());
 
     if let Some(log_dir) = log_dir {
         cmd.arg("--log-dir").arg(log_dir);
+    }
+
+    // Inherit PATH from parent so daemon can find pixi, ros2, etc.
+    if let Ok(path) = std::env::var("PATH") {
+        cmd.env("PATH", path);
     }
 
     // Detach from parent process
@@ -53,13 +69,58 @@ pub async fn start_daemon_background(
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
 
+    // CRITICAL: Preserve the write FD across exec
+    // By default, FDs are closed on exec (FD_CLOEXEC flag)
+    // We need to clear this flag so the child inherits the pipe
+    #[cfg(unix)]
+    {
+        use nix::fcntl::{fcntl, FcntlArg, FdFlag};
+
+        unsafe {
+            cmd.pre_exec(move || {
+                // Clear FD_CLOEXEC on the write end so it's inherited
+                fcntl(write_fd_raw, FcntlArg::F_SETFD(FdFlag::empty()))
+                    .map_err(std::io::Error::other)?;
+                Ok(())
+            });
+        }
+    }
+
     let child = cmd.spawn().context("Failed to spawn daemon process")?;
 
     // Detach - don't wait for child
     drop(child);
 
-    info!("Daemon spawned successfully");
-    Ok(())
+    // Close write end in parent (daemon holds it)
+    drop(write_fd);
+
+    // Extract raw FD and forget the PipeReader to avoid double-close
+    let read_fd_raw = read_fd.as_raw_fd();
+    std::mem::forget(read_fd);
+
+    let result = read_startup_result(read_fd_raw).await?;
+
+    match result {
+        StartupMessage::Success => {
+            info!("Daemon spawned successfully");
+            Ok(())
+        }
+        StartupMessage::Error(e) => Err(anyhow!("Daemon startup failed: {}", e)),
+    }
+}
+
+pub async fn read_startup_result(read_fd: RawFd) -> Result<StartupMessage> {
+    let file = unsafe { tokio::fs::File::from_raw_fd(read_fd) };
+    let mut reader = tokio::io::BufReader::new(file);
+    let mut line = String::new();
+
+    match tokio::time::timeout(Duration::from_secs(5), reader.read_line(&mut line)).await {
+        Ok(Ok(_)) => serde_json::from_str(&line).context("Invalid startup message from daemon"),
+        Ok(Err(e)) => Err(anyhow!("Failed to read from startup pipe: {}", e)),
+        Err(_) => Err(anyhow!(
+            "Daemon initialisation timed out - waiting for startup message"
+        )),
+    }
 }
 
 /// Wait for socket to become available with exponential backoff

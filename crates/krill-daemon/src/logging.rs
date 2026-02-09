@@ -1,6 +1,8 @@
 // Logging System - Per-service and timeline logging
 
+use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
+use dirs::home_dir;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::fs::{self, File, OpenOptions};
@@ -13,6 +15,23 @@ use tracing::info;
 
 /// Maximum log lines to keep in memory per service
 const MAX_LOG_LINES: usize = 5000;
+
+/// Expand ~ to home directory in paths
+fn expand_tilde(path: &Path) -> Result<PathBuf> {
+    let prefix = "~/";
+
+    if let Some(path_str) = path.to_str() {
+        if path_str.starts_with(prefix) {
+            let home = home_dir().context("Could not determine home directory")?;
+            return Ok(home.join(path_str.strip_prefix(prefix).unwrap()));
+        } else if path_str == "~" {
+            let home = home_dir().context("Could not determine home directory")?;
+            return Ok(home);
+        }
+    }
+
+    Ok(path.to_path_buf())
+}
 
 #[derive(Debug, Error)]
 pub enum LogError {
@@ -57,6 +76,9 @@ impl LogStore {
             let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
             home.join(".krill").join("logs")
         });
+
+        // Expand ~ in the path if present
+        let base_dir = expand_tilde(&base_dir).unwrap();
 
         // Create session directory with timestamp
         let timestamp = Utc::now().format("%Y%m%d-%H%M%S");

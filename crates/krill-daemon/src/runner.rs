@@ -160,12 +160,16 @@ impl ServiceRunner {
         let program = &cmd_parts[0];
         let args = &cmd_parts[1..];
 
+        // Resolve the full path to the program
+        let program_path = krill_common::find_executable(program)
+            .map_err(|e| RunnerError::SpawnFailed(e.to_string()))?;
+
         // Set up process name
         let process_name = generate_process_name(&self.service_name, None)
             .map_err(|e| RunnerError::SpawnFailed(e.to_string()))?;
 
-        // Create command
-        let mut command = Command::new(program);
+        // Create command with resolved path
+        let mut command = Command::new(&program_path);
         command
             .args(args)
             .env("KRILL_SERVICE_NAME", &self.service_name)
