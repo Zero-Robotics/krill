@@ -187,8 +187,8 @@ async fn run_app(
                     })
                     .fold((0, 0), |(u, t), (du, dt)| (u + du, t + dt));
 
-                let disk_usage_gb = total_used / 1024 / 1024 / 1024;
-                let disk_total_gb = total_capacity / 1024 / 1024 / 1024;
+                let disk_usage_gb = total_used as f32 / 1024.0 / 1024.0 / 1024.0 / 1024.0;
+                let disk_total_gb = total_capacity as f32 / 1024.0 / 1024.0 / 1024.0 / 1024.0;
 
                 // Update app state directly
                 app.cpu_usage = cpu_usage;
