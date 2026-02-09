@@ -27,6 +27,7 @@ pub struct ServiceState {
     pub critical: bool,
     pub restart_policy: String,
     pub max_restarts: u32,
+    pub last_error: Option<String>,
 }
 
 pub struct App {
@@ -92,6 +93,7 @@ impl App {
                         critical: false,
                         restart_policy: String::new(),
                         max_restarts: 0,
+                        last_error: None,
                     });
 
                 // Update service list
@@ -132,6 +134,7 @@ impl App {
                             critical: snapshot.critical,
                             restart_policy: snapshot.restart_policy,
                             max_restarts: snapshot.max_restarts,
+                            last_error: snapshot.last_error,
                         },
                     );
                 }
