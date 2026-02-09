@@ -80,7 +80,7 @@ pub async fn start_daemon_background(
             cmd.pre_exec(move || {
                 // Clear FD_CLOEXEC on the write end so it's inherited
                 fcntl(write_fd_raw, FcntlArg::F_SETFD(FdFlag::empty()))
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                    .map_err(std::io::Error::other)?;
                 Ok(())
             });
         }
@@ -103,9 +103,9 @@ pub async fn start_daemon_background(
     match result {
         StartupMessage::Success => {
             info!("Daemon spawned successfully");
-            return Ok(());
+            Ok(())
         }
-        StartupMessage::Error(e) => return Err(anyhow!("Daemon startup failed: {}", e)),
+        StartupMessage::Error(e) => Err(anyhow!("Daemon startup failed: {}", e)),
     }
 }
 
