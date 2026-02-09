@@ -45,6 +45,8 @@ pub struct App {
     pub cpu_usage: f32,
     pub memory_used_mb: u64,
     pub memory_total_mb: u64,
+    pub disk_usage_mb: u64,
+    pub disk_total_mb: u64,
 }
 
 impl App {
@@ -65,6 +67,8 @@ impl App {
             cpu_usage: 0.0,
             memory_used_mb: 0,
             memory_total_mb: 0,
+            disk_usage_mb: 0,
+            disk_total_mb: 0,
         }
     }
 
