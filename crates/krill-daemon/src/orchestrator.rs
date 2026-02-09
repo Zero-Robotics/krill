@@ -180,7 +180,13 @@ impl Orchestrator {
             .ok_or_else(|| OrchestratorError::ServiceNotFound(service_name.to_string()))?;
 
         let mut runner_guard = runner.lock().await;
-        runner_guard.start().await?;
+        if let Err(e) = runner_guard.start().await {
+            error!("Failed to start service '{}': {}", service_name, e);
+            runner_guard.mark_failed(Some(e.to_string()));
+            let status = runner_guard.get_status();
+            let _ = self.event_tx.send((service_name.to_string(), status));
+            return Err(e.into());
+        }
 
         // Take stdout/stderr handles and spawn output capture tasks
         if let Some(stdout) = runner_guard.take_stdout() {
@@ -278,7 +284,11 @@ impl Orchestrator {
 
                 let should_restart = runner_guard.should_restart(exit_code);
 
-                runner_guard.mark_failed();
+                let error_msg = match exit_code {
+                    Some(code) => format!("Process exited with code {}", code),
+                    None => "Process terminated unexpectedly".to_string(),
+                };
+                runner_guard.mark_failed(Some(error_msg));
                 let status = runner_guard.get_status();
                 let _ = self.event_tx.send((service_name.to_string(), status));
 
@@ -475,7 +485,7 @@ impl Orchestrator {
                     uid: runner_guard.uid().to_string(),
                     uptime,
                     restart_count: runner_guard.restart_count(),
-                    last_error: None,
+                    last_error: runner_guard.last_error().map(String::from),
                     namespace: runner_guard.namespace().to_string(),
                     executor_type: runner_guard.executor_type().to_string(),
                     dependencies,

@@ -238,7 +238,7 @@ fn render_service_list(frame: &mut Frame, app: &App, area: Rect) {
             "-".to_string()
         };
 
-        let line = Line::from(vec![
+        let mut spans = vec![
             Span::styled(
                 format!(" {:<20}", name),
                 row_style.add_modifier(if is_selected {
@@ -273,8 +273,17 @@ fn render_service_list(frame: &mut Frame, app: &App, area: Rect) {
                 format!("{:<8}", service.restart_count),
                 row_style.fg(if is_selected { SELECTED_FG } else { DIM_FG }),
             ),
-        ]);
+        ];
 
+        // Append error snippet for failed services
+        if service.status == ServiceStatus::Failed {
+            if let Some(ref error) = service.last_error {
+                let truncated: String = error.chars().take(60).collect();
+                spans.push(Span::styled(truncated, row_style.fg(STATUS_FAILED)));
+            }
+        }
+
+        let line = Line::from(spans);
         items.push(ListItem::new(line).style(row_style));
     }
 
@@ -690,6 +699,23 @@ fn render_detail_view(frame: &mut Frame, app: &App, service: &str) {
                 }),
             ),
         ]));
+
+        // Last error section
+        if let Some(ref error) = svc.last_error {
+            details.push(Line::from(""));
+            details.push(Line::from(Span::styled(
+                "═══ Last Error ═══",
+                Style::default()
+                    .fg(STATUS_FAILED)
+                    .add_modifier(Modifier::BOLD),
+            )));
+            for line in error.lines() {
+                details.push(Line::from(Span::styled(
+                    line,
+                    Style::default().fg(STATUS_FAILED),
+                )));
+            }
+        }
     }
 
     let detail_para = Paragraph::new(details).block(Block::default().borders(Borders::NONE));
