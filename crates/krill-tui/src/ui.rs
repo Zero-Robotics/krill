@@ -100,7 +100,7 @@ fn render_header(frame: &mut Frame, app: &App, area: Rect) {
     };
 
     let disk_percent = if app.disk_total_gb > 0.0 {
-        (app.disk_usage_gb as f32 / app.disk_total_gb as f32) * 100.0
+        (app.disk_usage_gb / app.disk_total_gb) * 100.0
     } else {
         0.0
     };
