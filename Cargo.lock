@@ -688,6 +688,7 @@ dependencies = [
  "clap",
  "crossterm",
  "krill-common",
+ "nix 0.31.1",
  "ratatui",
  "serde",
  "serde_json",

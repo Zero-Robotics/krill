@@ -20,3 +20,4 @@ ratatui.workspace = true
 crossterm.workspace = true
 clap.workspace = true
 sysinfo.workspace = true
+nix = "0.31.1"

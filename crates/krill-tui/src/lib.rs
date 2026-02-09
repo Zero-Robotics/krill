@@ -17,7 +17,7 @@ use krill_common::{ClientMessage, ServerMessage};
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
 use std::path::PathBuf;
-use sysinfo::System;
+use sysinfo::{Disks, System};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
 use tokio::sync::mpsc;
@@ -177,10 +177,25 @@ async fn run_app(
                 let memory_used_mb = sys.used_memory() / 1024 / 1024;
                 let memory_total_mb = sys.total_memory() / 1024 / 1024;
 
+                let disks = Disks::new_with_refreshed_list();
+
+                let (total_used, total_capacity): (u64, u64) = disks
+                    .iter()
+                    .map(|disk| {
+                        let used = disk.total_space() - disk.available_space();
+                        (used, disk.total_space())
+                    })
+                    .fold((0, 0), |(u, t), (du, dt)| (u + du, t + dt));
+
+                let disk_usage_gb = total_used as f32 / 1024.0 / 1024.0 / 1024.0 / 1024.0;
+                let disk_total_gb = total_capacity as f32 / 1024.0 / 1024.0 / 1024.0 / 1024.0;
+
                 // Update app state directly
                 app.cpu_usage = cpu_usage;
                 app.memory_used_mb = memory_used_mb;
                 app.memory_total_mb = memory_total_mb;
+                app.disk_usage_gb = disk_usage_gb;
+                app.disk_total_gb = disk_total_gb;
 
                 needs_redraw = true;
             }
