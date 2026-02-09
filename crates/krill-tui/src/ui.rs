@@ -149,7 +149,10 @@ fn render_header(frame: &mut Frame, app: &App, area: Rect) {
         ),
         Span::raw("  "),
         Span::styled("DISK: ", Style::default().fg(DIM_FG)),
-        Span::styled("N/A", Style::default().fg(DIM_FG)),
+        Span::styled(
+            format!("{}GB/{}GB", app.disk_usage_gb, app.disk_total_gb),
+            Style::default().fg(DIM_FG),
+        ),
     ]);
 
     let header = Paragraph::new(vec![line1, line2, line3])

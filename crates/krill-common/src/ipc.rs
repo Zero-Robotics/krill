@@ -78,6 +78,8 @@ pub enum ServerMessage {
         cpu_usage: f32,
         memory_used_mb: u64,
         memory_total_mb: u64,
+        disk_usage_gb: u64,
+        disk_total_gb: u64,
     },
 }
 

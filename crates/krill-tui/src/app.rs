@@ -45,8 +45,8 @@ pub struct App {
     pub cpu_usage: f32,
     pub memory_used_mb: u64,
     pub memory_total_mb: u64,
-    pub disk_usage_mb: u64,
-    pub disk_total_mb: u64,
+    pub disk_usage_gb: u64,
+    pub disk_total_gb: u64,
 }
 
 impl App {
@@ -67,8 +67,8 @@ impl App {
             cpu_usage: 0.0,
             memory_used_mb: 0,
             memory_total_mb: 0,
-            disk_usage_mb: 0,
-            disk_total_mb: 0,
+            disk_usage_gb: 0,
+            disk_total_gb: 0,
         }
     }
 
@@ -141,10 +141,14 @@ impl App {
                 cpu_usage,
                 memory_used_mb,
                 memory_total_mb,
+                disk_usage_gb,
+                disk_total_gb,
             } => {
                 self.cpu_usage = cpu_usage;
                 self.memory_used_mb = memory_used_mb;
                 self.memory_total_mb = memory_total_mb;
+                self.disk_usage_gb = disk_usage_gb;
+                self.disk_total_gb = disk_total_gb;
             }
             ServerMessage::LogHistory { service, lines } => {
                 // Prepend history to existing logs

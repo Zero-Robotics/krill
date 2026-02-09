@@ -177,10 +177,37 @@ async fn run_app(
                 let memory_used_mb = sys.used_memory() / 1024 / 1024;
                 let memory_total_mb = sys.total_memory() / 1024 / 1024;
 
+                // let (disk_usage_mb, disk_total_mb) = nix::sys::statvfs::statvfs("/")
+                //     .map(|stat| {
+                //         let block_size = stat.block_size() as u64;
+                //         let total = stat.blocks() as u64 * block_size;
+                //         let available = stat.blocks_available() as u64 * block_size;
+                //         let used = total - available;
+                //         (used / 1024 / 1024 / 1024, total / 1024 / 1024 / 1024)
+                //     })
+                //     .unwrap_or((0, 0));
+                //
+                use sysinfo::Disks;
+
+                let disks = Disks::new_with_refreshed_list();
+
+                let (total_used, total_capacity): (u64, u64) = disks
+                    .iter()
+                    .map(|disk| {
+                        let used = disk.total_space() - disk.available_space();
+                        (used, disk.total_space())
+                    })
+                    .fold((0, 0), |(u, t), (du, dt)| (u + du, t + dt));
+
+                let disk_usage_gb = total_used / 1024 / 1024 / 1024;
+                let disk_total_gb = total_capacity / 1024 / 1024 / 1024;
+
                 // Update app state directly
                 app.cpu_usage = cpu_usage;
                 app.memory_used_mb = memory_used_mb;
                 app.memory_total_mb = memory_total_mb;
+                app.disk_usage_gb = disk_usage_gb;
+                app.disk_total_gb = disk_total_gb;
 
                 needs_redraw = true;
             }
