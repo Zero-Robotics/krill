@@ -45,18 +45,22 @@ enum Commands {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Initialize tracing
-    let filter = if cli.verbose {
-        EnvFilter::new("debug")
-    } else {
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn"))
-    };
+    // Initialize tracing for CLI commands only (daemon initializes its own)
+    let is_daemon_command = matches!(cli.command, Some(Commands::Daemon(_)));
 
-    fmt()
-        .with_env_filter(filter)
-        .with_target(false)
-        .with_writer(io::stderr)
-        .init();
+    if !is_daemon_command {
+        let filter = if cli.verbose {
+            EnvFilter::new("debug")
+        } else {
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn"))
+        };
+
+        fmt()
+            .with_env_filter(filter)
+            .with_target(false)
+            .with_writer(io::stderr)
+            .init();
+    }
 
     // If no subcommand provided, try to attach to daemon or show help
     let command = match cli.command {

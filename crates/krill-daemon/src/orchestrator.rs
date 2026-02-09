@@ -104,8 +104,16 @@ impl Orchestrator {
 
         // Wait for all services to start
         for handle in handles {
-            if let Err(e) = handle.await {
-                error!("Failed to start service: {}", e);
+            match handle.await {
+                Ok(Ok(())) => {
+                    // Service started successfully
+                }
+                Ok(Err(e)) => {
+                    error!("Failed to start service: {}", e);
+                }
+                Err(e) => {
+                    error!("Service task panicked: {}", e);
+                }
             }
         }
 

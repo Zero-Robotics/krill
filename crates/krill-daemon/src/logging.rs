@@ -14,6 +14,22 @@ use tracing::info;
 /// Maximum log lines to keep in memory per service
 const MAX_LOG_LINES: usize = 5000;
 
+/// Expand ~ to home directory in paths
+fn expand_tilde(path: &Path) -> PathBuf {
+    if let Some(path_str) = path.to_str() {
+        if path_str.starts_with("~/") {
+            if let Some(home) = dirs::home_dir() {
+                return home.join(&path_str[2..]);
+            }
+        } else if path_str == "~" {
+            if let Some(home) = dirs::home_dir() {
+                return home;
+            }
+        }
+    }
+    path.to_path_buf()
+}
+
 #[derive(Debug, Error)]
 pub enum LogError {
     #[error("IO error: {0}")]
@@ -57,6 +73,9 @@ impl LogStore {
             let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
             home.join(".krill").join("logs")
         });
+
+        // Expand ~ in the path if present
+        let base_dir = expand_tilde(&base_dir);
 
         // Create session directory with timestamp
         let timestamp = Utc::now().format("%Y%m%d-%H%M%S");

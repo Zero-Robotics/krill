@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct KrillConfig {
     pub version: String,
     pub name: String,
@@ -17,6 +18,7 @@ pub struct KrillConfig {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ServiceConfig {
     pub execute: ExecuteConfig,
     #[serde(default)]

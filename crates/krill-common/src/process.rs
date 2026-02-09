@@ -3,6 +3,7 @@
 use crate::execute::ExecuteConfig;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::process::Command as StdCommand;
 use thiserror::Error;
 
 #[cfg(unix)]
@@ -18,6 +19,36 @@ pub enum ProcessError {
 
     #[error("PGID isolation failed: {0}")]
     PgidError(String),
+
+    #[error("Command not found: {0}")]
+    CommandNotFound(String),
+}
+
+/// Find the full path to an executable using which/where
+pub fn find_executable(program: &str) -> Result<String, ProcessError> {
+    // If it's already an absolute path or contains a slash, use it directly
+    if program.starts_with('/') || program.contains('/') {
+        return Ok(program.to_string());
+    }
+
+    // Try to find it using 'which' command
+    let output = StdCommand::new("which")
+        .arg(program)
+        .output()
+        .map_err(|e| ProcessError::CommandNotFound(format!("Failed to run 'which': {}", e)))?;
+
+    if output.status.success() {
+        let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !path.is_empty() {
+            return Ok(path);
+        }
+    }
+
+    // Fallback: return the program name as-is (will fail at spawn time with better error)
+    Err(ProcessError::CommandNotFound(format!(
+        "Command '{}' not found in PATH. Make sure it's installed and accessible.",
+        program
+    )))
 }
 
 // Phase 3.1: Process Naming

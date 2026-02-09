@@ -1,6 +1,6 @@
 // krill daemon - Run the daemon directly (used internally)
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use krill_common::KrillConfig;
 use krill_daemon::{
     ErrorCategory, IpcServer, LogStore, Orchestrator, StartupError, StartupMessage,
@@ -51,9 +51,11 @@ pub async fn execute(args: DaemonArgs) -> Result<()> {
         };
         let msg = StartupMessage::Error(error);
         if let Some(pipe) = pipe {
-            let _ = writeln!(pipe, "{}", serde_json::to_string(&msg).unwrap());
+            let json = serde_json::to_string(&msg).unwrap();
+            let _ = writeln!(pipe, "{}", json);
+            let _ = pipe.flush(); // Ensure message is sent before exit
         } else {
-            eprintln!("Startup error: {}", msg);
+            eprintln!("Startup error (no pipe): {}", msg);
         }
         std::process::exit(1);
     };
@@ -96,7 +98,16 @@ pub async fn execute(args: DaemonArgs) -> Result<()> {
 
     info!("Logs directory: {:?}", log_store.session_dir());
 
-    init_daemon_tracing(&log_store);
+    if let Err(e) = init_daemon_tracing(&log_store) {
+        send_error(
+            &mut startup_pipe,
+            ErrorCategory::LogStore,
+            format!("Failed to initialize tracing: {}", e),
+            Some(log_store.session_dir().join("krill.log")),
+            "Check that the log directory is writable".to_string(),
+        );
+        unreachable!();
+    }
     info!("Krill daemon starting");
     info!("Workspace: {}", config.name);
 
@@ -157,8 +168,9 @@ pub async fn execute(args: DaemonArgs) -> Result<()> {
         },
     );
 
-    // Send success messages to close pipe
-    if let Some(mut pipe) = startup_pipe {
+    // Send success message - daemon infrastructure is ready
+    // (Service startup happens asynchronously and may take time)
+    if let Some(mut pipe) = startup_pipe.take() {
         let msg = StartupMessage::Success;
         let _ = writeln!(pipe, "{}", serde_json::to_string(&msg).unwrap());
         drop(pipe);
@@ -262,10 +274,11 @@ pub async fn execute(args: DaemonArgs) -> Result<()> {
     info!("Starting all services...");
     if let Err(e) = orchestrator.start_all().await {
         error!("Failed to start services: {}", e);
-        return Err(e.into());
+        // Note: Service failures are logged and visible in TUI/logs
+        // Daemon infrastructure is still running
     }
 
-    info!("All services started successfully");
+    info!("All services initialization complete");
     info!("Daemon running. Press Ctrl+C to stop.");
 
     // Wait for shutdown signal
@@ -304,17 +317,19 @@ pub async fn execute(args: DaemonArgs) -> Result<()> {
 fn init_daemon_tracing(log_store: &LogStore) -> Result<()> {
     use tracing_subscriber::{fmt, EnvFilter};
 
-    let daemon_log_path = log_store.get_daemon_log_path();
+    let daemon_log_path = log_store.session_dir().join("krill.log");
     let file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(daemon_log_path)?;
 
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+
     let subscriber = fmt()
         .with_writer(file)
         .with_target(false)
         .with_ansi(false)
-        .with_env_filter(EnvFilter::from_default_env())
+        .with_env_filter(filter)
         .finish();
 
     tracing::subscriber::set_global_default(subscriber)?;

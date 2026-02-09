@@ -40,6 +40,8 @@ pub async fn start_daemon_background(
     // Create pipe for startup communicaiton
     let (read_fd, write_fd) = os_pipe::pipe().context("Failed to create pipe")?;
 
+    let write_fd_raw = write_fd.as_raw_fd();
+
     // Get current executable path
     let current_exe = std::env::current_exe()?;
 
@@ -51,16 +53,38 @@ pub async fn start_daemon_background(
         .arg("--socket")
         .arg(socket_path)
         .arg("--startup-pipe-fd")
-        .arg(write_fd.as_raw_fd().to_string());
+        .arg(write_fd_raw.to_string());
 
     if let Some(log_dir) = log_dir {
         cmd.arg("--log-dir").arg(log_dir);
+    }
+
+    // Inherit PATH from parent so daemon can find pixi, ros2, etc.
+    if let Ok(path) = std::env::var("PATH") {
+        cmd.env("PATH", path);
     }
 
     // Detach from parent process
     cmd.stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
+
+    // CRITICAL: Preserve the write FD across exec
+    // By default, FDs are closed on exec (FD_CLOEXEC flag)
+    // We need to clear this flag so the child inherits the pipe
+    #[cfg(unix)]
+    {
+        use nix::fcntl::{fcntl, FcntlArg, FdFlag};
+
+        unsafe {
+            cmd.pre_exec(move || {
+                // Clear FD_CLOEXEC on the write end so it's inherited
+                fcntl(write_fd_raw, FcntlArg::F_SETFD(FdFlag::empty()))
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                Ok(())
+            });
+        }
+    }
 
     let child = cmd.spawn().context("Failed to spawn daemon process")?;
 
@@ -70,7 +94,11 @@ pub async fn start_daemon_background(
     // Close write end in parent (daemon holds it)
     drop(write_fd);
 
-    let result = read_startup_result(read_fd.as_raw_fd()).await?;
+    // Extract raw FD and forget the PipeReader to avoid double-close
+    let read_fd_raw = read_fd.as_raw_fd();
+    std::mem::forget(read_fd);
+
+    let result = read_startup_result(read_fd_raw).await?;
 
     match result {
         StartupMessage::Success => {
