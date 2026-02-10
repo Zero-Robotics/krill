@@ -331,9 +331,3 @@ command: node app.js --port 3000   # ✅
 command: ls | grep foo             # ❌
 command: echo "hi" > output.txt    # ❌
 ```
-
-## See Also
-
-- [Configuration Guide](configuration.md) - Complete reference
-- [Health Checks Guide](health-checks.md) - Health check patterns
-- [Dependencies Guide](dependencies.md) - Orchestration patterns

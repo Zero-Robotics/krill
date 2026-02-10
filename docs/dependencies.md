@@ -711,9 +711,3 @@ krill logs dependency-name
 - Review critical flags
 - Consider using restart policies
 - May need to restructure dependencies
-
-## See Also
-
-- [Configuration Guide](configuration.md) - Full configuration reference
-- [Health Checks Guide](health-checks.md) - Health check patterns
-- [Best Practices](best-practices.md) - Production tips

@@ -654,9 +654,3 @@ def main():
 1. Increase health check timeout in recipe
 2. Send first heartbeat as soon as possible
 3. Consider using `started` dependency instead of `healthy`
-
-## See Also
-
-- [Health Checks Guide](health-checks.md) - All health check types
-- [Configuration Guide](configuration.md) - Recipe configuration
-- [Quick Reference](quick-reference.md) - Quick syntax lookup

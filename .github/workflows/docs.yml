@@ -1,0 +1,29 @@
+name: Deploy Documentation
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - ".github/workflows/docs.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.8.1
+        with:
+          pixi-version: latest
+          manifest-path: docs/pixi.toml
+
+      - name: Deploy to GitHub Pages
+        working-directory: docs
+        run: pixi run mkdocs gh-deploy --config-file ../mkdocs.yml --force

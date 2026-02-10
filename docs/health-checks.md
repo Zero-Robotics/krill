@@ -478,9 +478,3 @@ services:
 - Verify dependency service is starting successfully
 - Review dependency health check configuration
 - Check dependency service logs
-
-## See Also
-
-- [Configuration Guide](configuration.md) - Full config reference
-- [Dependencies Guide](dependencies.md) - Orchestration patterns
-- [SDK Documentation](../sdk/) - Using Krill SDKs

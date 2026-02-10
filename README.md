@@ -1,7 +1,7 @@
 # Krill - Process orchestrator for Robotics
 
 <p align="center">
-  <img src="/assets/banner-krill.png" alt="Krill-banner" width="320">
+  <img src="/docs/assets/banner-krill.png" alt="Krill-banner" width="320">
 </p>
 
 **Professional-grade process orchestrator for robotics systems** built in Rust.
