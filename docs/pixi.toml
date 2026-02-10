@@ -6,6 +6,9 @@ platforms = ["osx-arm64"]
 version = "0.1.0"
 
 [tasks]
+serve = "mkdocs serve -f ../mkdocs.yml"
+build = "mkdocs build -f ../mkdocs.yml"
+deploy = "mkdocs gh-deploy -f ../mkdocs.yml --force"
 
 [dependencies]
 mkdocs = ">=1.6.1,<2"
