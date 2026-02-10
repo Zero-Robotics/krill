@@ -8,24 +8,49 @@ hide:
 <div align="center">
   <img src="assets/banner-krill.png" alt="Krill Logo" width="500"/>
 </div>
-  **Modern DAG orchestrator for robotics**
+  **Modern DAG orchestrator for robotics: Build on Rust 🦀**
   
   [![GitHub stars](https://img.shields.io/github/stars/Zero-Robotics/krill?style=social)](https://github.com/Zero-Robotics/krill)
   [![Docs](https://img.shields.io/badge/docs-passing-brightgreen)](https://Zero-Robotics.github.io/krill)
 
-
 ## Why Krill?
 
-!!! tip "Perfect for Robotics"
-    Krill is designed specifically for robotics workloads with ROS2, Pixi and Docker integration, together with real-time monitoring. It provides a seamless experience for managing complex robotics systems.
+!!! tip "Built for Robotics"
+    Krill is an orchestrator designed specifically for robotics, built to manage the real-world complexity of modern robotic systems.
+    
+    ROS / ROS 2 has become a de-facto standard, and Docker is increasingly adopted by roboticists.  
+    But once systems grow beyond a single machine, mixing native processes, containers, hardware drivers, and launch logic quickly becomes brittle.
+    
+    Krill bridges this gap by providing a unified way to **compose, run, and operate** complex robotics stacks — from laptops to production robots.
 
-Build on Rust 🦀
+!!! success "What Krill Solves"
+
+    **One tool. Your entire robotics stack.**
+    
+    - **ROS 2 Native**  
+      First-class support for packages, launch files, lifecycle nodes, and ROS-centric workflows
+    
+    - **Docker & Pixi Ready**  
+      Seamlessly mix containerized, virtual-env, and native workloads in a single system
+    
+    - **Smart Orchestration**  
+      DAG-based dependency management ensures deterministic startup, shutdown, and recovery
+    
+    - **Production-Grade Observability**  
+      Built-in health checks, status propagation, and automatic restart semantics
+    
+    - **Policy-Driven Operation**  
+      Encode operational constraints, safety rules, and system invariants as policies — not scripts
+    
+    From local development to production robots — one configuration, zero rewrites.
+
 <div class="performance-metric">
-  <strong>⚡ lightning-fast</strong> performance
+<strong>⚡ lightning-fast</strong> performance
 </div>
 <div class="performance-metric">
-  <strong>🔒 Safety Critical </strong> performance
+<strong>🔒 Safety Critical </strong> performance
 </div>
+
 
 ## Features
 
@@ -103,7 +128,7 @@ Build on Rust 🦀
 
 -   [Getting Started →](getting-started.md)
 -   [Configuration Guide →](configuration.md)
--   [ROS2 Integration →](ros2/overview.md)
--   [API Reference →](api/index.md)
+-   [Examples →](examples/index.md)
+-   [Quick Reference →](quick-reference.md)
 
 </div>

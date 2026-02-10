@@ -11,7 +11,7 @@ Complete reference for Krill recipe configuration files.
 - [Health Checks](#health-checks)
 - [Policies](#policies)
 - [Dependencies](#dependencies)
-- [Examples](#examples)
+- [Complete Example](#complete-example)
 
 ## File Structure
 
@@ -519,9 +519,3 @@ services:
     dependencies:
       - navigation: started
 ```
-
-## See Also
-
-- [Health Checks Guide](health-checks.md) - Detailed health check patterns
-- [Dependencies Guide](dependencies.md) - DAG orchestration strategies
-- [Best Practices](best-practices.md) - Production deployment tips

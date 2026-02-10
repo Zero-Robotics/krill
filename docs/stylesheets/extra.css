@@ -1,7 +1,13 @@
 /* Krill custom styling */
 :root {
-    --md-primary-fg-color: #673ab7; /* Deep purple */
-    --md-accent-fg-color: #00bcd4; /* Cyan */
+    --md-primary-fg-color: #094183;
+    --md-accent-fg-color: #33dfe8;
+}
+
+/* Gradient header bar and nav tabs */
+.md-header,
+.md-tabs {
+    background: linear-gradient(90deg, #094183, #33dfe8);
 }
 
 /* Code blocks with robotics feel */

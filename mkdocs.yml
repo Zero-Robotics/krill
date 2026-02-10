@@ -8,7 +8,7 @@ edit_uri: edit/main/docs/
 theme:
   name: material
   logo: assets/krill-logo.png
-  favicon: assets/krill-logo.png # Changed from favicon.png (you don't have it)
+  favicon: assets/krill-logo.png
 
   palette:
     - scheme: slate
@@ -61,22 +61,20 @@ theme:
 
 nav:
   - Home: index.md
-  - Getting Started:
-      - Installation: getting-started.md
-      - SDK Installation: sdk-installation.md
-      - Quick Start: quick-reference.md
-  - Core Concepts:
+  - Getting Started: getting-started.md
+  - Reference:
       - Configuration: configuration.md
-      - Health Checks: health-checks.md
       - Dependencies: dependencies.md
-  - ROS2 Integration:
-      - Overview: ros2/overview.md
-      - Lifecycle Nodes: ros2/lifecycle.md
-      - Launch Files: ros2/launch.md
-  - Advanced:
-      - Architecture: advanced/architecture.md
-      - Performance: advanced/performance.md
-  - API Reference: api/index.md
+      - Health Checks: health-checks.md
+      - SDK: sdk-installation.md
+      - Quick Reference: quick-reference.md
+  - Examples:
+      - Overview: examples/index.md
+      - Pixi Services: examples/pixi-services.md
+      - ROS2 Talker / Listener: examples/ros2-talker-listener.md
+      - ROS2 Navigation Stack: examples/ros2-navigation.md
+      - Shell Scripts: examples/shell-scripts.md
+      - Docker: examples/docker.md
 
 markdown_extensions:
   - abbr
@@ -131,8 +129,5 @@ extra:
 
 extra_css:
   - stylesheets/extra.css
-
-# extra_javascript:
-#   - javascripts/extra.js
 
 copyright: Copyright &copy; 2025 Zero Robotics - Tommaso Pardi
