@@ -7,6 +7,7 @@
 **Professional-grade process orchestrator for robotics systems** built in Rust.
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
+[![Documentation](https://img.shields.io/badge/docs-mkdocs-blue)](https://zero-robotics.github.io/krill/)
 [![Tests](https://img.shields.io/badge/tests-155%20passing-brightgreen)]()
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)]()
 
