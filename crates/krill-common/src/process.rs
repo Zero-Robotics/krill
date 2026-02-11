@@ -1,5 +1,3 @@
-// Phase 3: Process Management
-
 use crate::execute::ExecuteConfig;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -51,7 +49,6 @@ pub fn find_executable(program: &str) -> Result<String, ProcessError> {
     )))
 }
 
-// Phase 3.1: Process Naming
 /// Generate a unique process name for a service instance
 pub fn generate_process_name(
     service_name: &str,
@@ -82,7 +79,6 @@ pub fn generate_process_name(
     Ok(process_name)
 }
 
-// Phase 3.2: Command Builder
 /// Build a complete command from ExecuteConfig
 pub fn build_command(
     config: &ExecuteConfig,
@@ -243,9 +239,7 @@ pub fn get_stop_command(config: &ExecuteConfig) -> Option<Vec<String>> {
     }
 }
 
-// Phase 3.3: PGID Isolation
 /// Set up a new process group for the given process ID
-/// This ensures that child processes are isolated and can be cleaned up together
 #[cfg(unix)]
 pub fn setup_process_group(pid: u32) -> Result<(), ProcessError> {
     let process_pid = Pid::from_raw(pid as i32);

@@ -1,5 +1,3 @@
-// Phase 1.5: IPC Protocol
-
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

@@ -31,7 +31,7 @@ hide:
       First-class support for packages, launch files, lifecycle nodes, and ROS-centric workflows
     
     - **Docker & Pixi Ready**  
-      Seamlessly mix containerized, virtual-env, and native workloads in a single system
+      Mix containerized, virtual-env, and native workloads in a single recipe
     
     - **Smart Orchestration**  
       DAG-based dependency management ensures deterministic startup, shutdown, and recovery
@@ -45,10 +45,10 @@ hide:
     From local development to production robots — one configuration, zero rewrites.
 
 <div class="performance-metric">
-<strong>⚡ lightning-fast</strong> performance
+<strong>⚡ Low overhead</strong> — native Rust daemon
 </div>
 <div class="performance-metric">
-<strong>🔒 Safety Critical </strong> performance
+<strong>🔒 Safety aware</strong> — critical service semantics
 </div>
 
 

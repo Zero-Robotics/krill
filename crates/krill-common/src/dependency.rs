@@ -1,5 +1,3 @@
-// Phase 1.2: Dependencies (Simple + Condition Syntax)
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

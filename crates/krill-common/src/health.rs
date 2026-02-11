@@ -1,5 +1,3 @@
-// Phase 4: Service Runner & Health Checks
-
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime};
 use thiserror::Error;
@@ -16,7 +14,6 @@ pub enum HealthError {
     GpuUnavailable(String),
 }
 
-// Phase 4.1: Health Check Types
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum HealthChecker {
@@ -87,7 +84,6 @@ impl HealthChecker {
     }
 }
 
-// Phase 4.2: GPU Validation
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GpuRequirement {
     #[serde(default)]

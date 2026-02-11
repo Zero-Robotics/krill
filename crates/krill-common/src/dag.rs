@@ -1,5 +1,3 @@
-// Phase 2: DAG Resolution
-
 use crate::dependency::{Dependency, DependencyCondition};
 use crate::ipc::ServiceStatus;
 use std::collections::{HashMap, HashSet, VecDeque};

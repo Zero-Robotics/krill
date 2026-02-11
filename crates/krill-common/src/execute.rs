@@ -1,5 +1,3 @@
-// Phase 1.1: Execute Types (Tagged Enum)
-
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;

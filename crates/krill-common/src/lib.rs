@@ -1,9 +1,3 @@
-// Phase 1: krill-common - Shared Types
-// Phase 2: DAG Resolution
-// Phase 3: Process Management
-// Phase 4: Health Checks
-// Phase 5: Configuration
-
 pub mod config;
 pub mod dag;
 pub mod dependency;

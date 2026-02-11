@@ -274,8 +274,6 @@ pub async fn execute(args: DaemonArgs) -> Result<()> {
     info!("Starting all services...");
     if let Err(e) = orchestrator.start_all().await {
         error!("Failed to start services: {}", e);
-        // Note: Service failures are logged and visible in TUI/logs
-        // Daemon infrastructure is still running
     }
 
     info!("All services initialization complete");

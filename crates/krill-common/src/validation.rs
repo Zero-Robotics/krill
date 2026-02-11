@@ -1,5 +1,3 @@
-// Phase 1.4: Shell Command Validator
-
 use thiserror::Error;
 
 #[derive(Debug, Error)]
