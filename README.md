@@ -175,7 +175,9 @@ We believe the core orchestrator should always be free and community-driven. Rev
 
 ## Learn more
 [Full Documentation](https://zero-robotics.github.io/krill/)
+
 [Examples](https://zero-robotics.github.io/krill/examples/)
+
 [SDK Installation](https://zero-robotics.github.io/krill/sdk-installation/)
 
 ## License
