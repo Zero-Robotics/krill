@@ -1,6 +1,6 @@
 site_name: Krill
 site_description: Modern DAG orchestrator for robotics - Zero-copy communication, ROS2 native
-site_url: https://zerorobotics.github.io/krill
+site_url: https://zero-robotics.github.io/krill
 repo_url: https://github.com/Zero-Robotics/krill
 repo_name: Zero-Robotics/krill
 edit_uri: edit/main/docs/
