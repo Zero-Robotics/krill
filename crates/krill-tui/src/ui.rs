@@ -1,4 +1,4 @@
-// TUI Rendering - K9s-inspired design
+// TUI Rendering
 
 use crate::app::{App, View};
 use krill_common::ServiceStatus;
