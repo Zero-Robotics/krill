@@ -1,0 +1,22 @@
+[workspace]
+authors = ["Tommaso Pardi <tommaso.pardi@gmail.com>"]
+channels = ["conda-forge"]
+name = "docs"
+platforms = ["osx-arm64", "linux-64"]
+version = "0.1.0"
+
+[tasks]
+serve = "mkdocs serve -f ../mkdocs.yml"
+build = "mkdocs build -f ../mkdocs.yml"
+deploy = "mkdocs gh-deploy -f ../mkdocs.yml --force"
+
+[dependencies]
+mkdocs = ">=1.6.1,<2"
+mkdocs-material = ">=9.7.1,<10"
+
+[pypi-dependencies]
+mkdocs-awesome-pages-plugin = ">=2.10.1, <3"
+mkdocs-simple-blog = ">=0.3.0, <0.4"
+mkdocs-shadcn = ">=0.9.9, <0.10"
+mkdocs-terminal = ">=4.8.0, <5"
+mkdocs-minify-plugin = ">=0.8.0, <0.9"
