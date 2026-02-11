@@ -6,6 +6,8 @@
 
 **Professional-grade process orchestrator for robotics systems** built in Rust.
 
+Unlike ROS2 launch or Docker compose, Krill adds safety-first orchestration with cascading failures, critical service protection, and a real-time monitoring UI designed for robots.
+
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
 [![Documentation](https://img.shields.io/badge/docs-mkdocs-blue)](https://zero-robotics.github.io/krill/)
 [![Tests](https://img.shields.io/badge/tests-155%20passing-brightgreen)]()
@@ -36,7 +38,6 @@ Krill provides DAG-based service orchestration, health monitoring, and safety in
 ```bash
 just install
 ```
-
 
 ### Create a recipe
 
@@ -123,7 +124,7 @@ services:
       - navigation: started
 ```
 
-See [Configuration Guide](docs/configuration.md) for all available options.
+See [Configuration Guide](https://zero-robotics.github.io/krill/configuration/) for all available options.
 
 ### Running krill
 
@@ -131,7 +132,6 @@ Start the daemon and open the TUI
 ```bash
 krill up krill.yaml
 ```
-you can skip opening the TUI with the option `-d/--daemon`.
 
 If a daemon is already running, just connect to the TUI
 ```bash
@@ -142,10 +142,6 @@ Stop krill with the command:
 ```bash
 krill down
 ```
-## How it looks
-https://github.com/user-attachments/assets/4707d2e5-42ac-4d92-8fba-749ccb340a2c
-
-
 ## Why krill?
 
 After working on various robotics projects, we realised the need for a robust process orchestrator that could handle complex dependencies and provide a user-friendly interface for monitoring and managing services. Krill was born out of this need, with a focus on:
@@ -154,100 +150,9 @@ After working on various robotics projects, we realised the need for a robust pr
 - **Tool Agnostic**: Stop fighting environment variables. Seamlessly mix Rust, Python, C++, and Dockerized workloads in a single graph.
 
 
-### Execute types & Health checks
+## How it looks
+https://github.com/user-attachments/assets/4707d2e5-42ac-4d92-8fba-749ccb340a2c
 
-**Backends**:
-- **Pixi** - Python package manager tasks (Highly recommended).
-- **ROS2** - Launch files with argument support.
-- **Docker** - Containerized execution.
-- **Shell** - Validated safe shell commands.
-
-**Health Checks**
-- **Heartbeat** - Services "check-in" via SDK (Rust/Python/C++).
-- **TCP/HTTP** - Port and endpoint validation.
-- **Script** - Run a custom command to verify health.
-
-## SDKs
-Krill provides SDKs for Rust, Python, and C++ to facilitate easy integration with your services.
-
-### Rust SDK
-
-```rust
-use krill_sdk_rust::KrillClient;
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = KrillClient::new("my-service").await?;
-    
-    loop {
-        // Do work...
-        
-        // Send heartbeat
-        client.heartbeat().await?;
-        
-        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-    }
-}
-```
-
-### Python SDK
-
-```python
-from krill import KrillClient
-
-with KrillClient("my-service") as client:
-    while True:
-        # Do work...
-        
-        # Send heartbeat
-        client.heartbeat()
-        
-        time.sleep(1)
-```
-
-**Async version:**
-
-```python
-import asyncio
-from krill import AsyncKrillClient
-
-async def main():
-    client = await AsyncKrillClient.connect("my-service")
-    
-    while True:
-        # Do work...
-        
-        # Send heartbeat
-        await client.heartbeat()
-        
-        await asyncio.sleep(1)
-
-asyncio.run(main())
-```
-
-### C++ SDK (Header-only)
-
-```cpp
-#include "krill.hpp"
-
-int main() {
-    try {
-        krill::Client client("my-service");
-        
-        while (true) {
-            // Do work...
-            
-            // Send heartbeat
-            client.heartbeat();
-            
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-        }
-    } catch (const krill::KrillError& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
-        return 1;
-    }
-}
-```
 ## Open-Core Philosophy
 
 Krill follows an **open-core model**. The community edition you see here is fully open-source under the Apache-2.0 license and covers everything needed to orchestrate robotics services in production:
@@ -268,47 +173,10 @@ The boundary is simple: if you're running services on a single robot or dev mach
 We believe the core orchestrator should always be free and community-driven. Revenue from Pro funds continued development of both editions.
 
 
-
-## TUI Key Bindings
-
-| Key | Action |
-|-----|--------|
-| ↑/k | Previous service |
-| ↓/j | Next service |
-| Enter | View logs |
-| d | Detail view |
-| r | Restart service |
-| s | Stop service |
-| S | Stop daemon (with confirmation) |
-| q | Quit TUI |
-| h | Help |
-
-## Documentation
-
-Comprehensive guides and references:
-
-- **[Quick Reference](docs/quick-reference.md)** - Fast lookup for common configurations
-- **[Configuration Guide](docs/configuration.md)** - Complete recipe file reference
-- **[SDK Installation](docs/sdk-installation.md)** - Install and use SDKs (Python, Rust, C++)
-- **[Health Checks](docs/health-checks.md)** - Service monitoring patterns
-- **[Dependencies](docs/dependencies.md)** - DAG orchestration strategies
-- **[Documentation Index](docs/README.md)** - All documentation
-
-## Development & Safety
-
-Building from source:
-```bash
-just check
-just build
-```
-
-**Safety Design**
-
-- **Shell command validation** - Rejects pipes, redirections, command substitution
-- **PGID isolation** - Each service in its own process group
-- **GPU validation** - Checks GPU availability before starting
-- **Dependency validation** - Ensures all dependencies exist
-- **Config validation** - Validates YAML against schema
+## Learn more
+[Full Documentation](https://zero-robotics.github.io/krill/)
+[Examples](https://zero-robotics.github.io/krill/examples/)
+[SDK Installation](https://zero-robotics.github.io/krill/sdk-installation/)
 
 ## License
 
