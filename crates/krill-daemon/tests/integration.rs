@@ -296,11 +296,11 @@ mod service_runner_tests {
         assert!(runner.should_restart(Some(1)));
 
         // Simulate failures to increment the counter
-        runner.mark_failed(); // restart_count -> 1
+        runner.mark_failed(None); // restart_count -> 1
         assert!(runner.should_restart(Some(1)));
 
-        runner.mark_failed(); // restart_count -> 2
-                              // Now restart_count (2) >= max_restarts (2), should NOT restart
+        runner.mark_failed(None); // restart_count -> 2
+                                  // Now restart_count (2) >= max_restarts (2), should NOT restart
         assert!(!runner.should_restart(Some(1)));
     }
 
@@ -329,12 +329,14 @@ mod service_runner_tests {
 
         assert_eq!(runner.restart_count(), 0);
 
-        runner.mark_failed();
+        runner.mark_failed(Some("test error".into()));
         assert_eq!(runner.restart_count(), 1);
         assert_eq!(runner.state(), ServiceState::Failed);
+        assert_eq!(runner.last_error(), Some("test error"));
 
-        runner.mark_failed();
+        runner.mark_failed(None);
         assert_eq!(runner.restart_count(), 2);
+        assert_eq!(runner.last_error(), None);
     }
 
     #[test]
@@ -348,7 +350,7 @@ mod service_runner_tests {
         assert_eq!(runner.get_status(), ServiceStatus::Starting);
 
         // After mark_failed -> Failed
-        runner.mark_failed();
+        runner.mark_failed(None);
         assert_eq!(runner.get_status(), ServiceStatus::Failed);
     }
 

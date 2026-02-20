@@ -59,6 +59,7 @@ pub struct ServiceRunner {
     restart_count: u32,
     start_time: Option<Instant>,
     last_healthy_time: Option<Instant>,
+    last_error: Option<String>,
     #[allow(dead_code)] // Reserved for future health check implementation
     health_checker: Option<HealthChecker>,
     env_vars: HashMap<String, String>,
@@ -88,6 +89,7 @@ impl ServiceRunner {
             restart_count: 0,
             start_time: None,
             last_healthy_time: None,
+            last_error: None,
             health_checker,
             env_vars,
         }
@@ -220,6 +222,7 @@ impl ServiceRunner {
         self.pid = Some(pid);
         self.state = ServiceState::Running;
         self.start_time = Some(Instant::now());
+        self.last_error = None;
 
         info!(
             "Service '{}' started successfully (PID: {})",
@@ -356,10 +359,18 @@ impl ServiceRunner {
     }
 
     /// Mark service as failed
-    pub fn mark_failed(&mut self) {
-        error!("Service '{}' marked as failed", self.service_name);
+    pub fn mark_failed(&mut self, error: Option<String>) {
+        error!(
+            "Service '{}' marked as failed: {:?}",
+            self.service_name, error
+        );
         self.state = ServiceState::Failed;
+        self.last_error = error;
         self.restart_count += 1;
+    }
+
+    pub fn last_error(&self) -> Option<&str> {
+        self.last_error.as_deref()
     }
 
     /// Check if service should be restarted
