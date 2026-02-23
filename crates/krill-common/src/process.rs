@@ -183,6 +183,11 @@ pub fn build_command(
             // Add image name
             cmd.push(image.clone());
 
+            // Add command if not empty
+            if !command.is_empty() {
+                cmd.push(command.clone());
+            }
+                
             Ok(cmd)
         }
     }
