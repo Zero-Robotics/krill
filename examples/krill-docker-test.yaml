@@ -1,0 +1,39 @@
+version: "1"
+name: docker-test
+log_dir: ~/.krill/logs
+
+services:
+  # Simple nginx web server
+  nginx:
+    execute:
+      type: docker
+      image: "nginx:latest"
+      ports:
+        - "8080:80"
+      volumes:
+        - "./docker-test/html:/usr/share/nginx/html:ro"
+    policy:
+      restart: always
+      max_restarts: 3
+      restart_delay: 5s
+    health_check:
+      type: http
+      port: 8080
+      path: /
+
+  # Python script in a container
+  python-hello:
+    execute:
+      type: docker
+      image: "python:3.11-slim"
+      command:
+        [
+          "python",
+          "-c",
+          "import time; [print(f'Hello from Python! Count: {i}') or time.sleep(2) for i in range(100)]",
+        ]
+    dependencies:
+      - nginx: started
+    policy:
+      restart: on-failure
+      max_restarts: 2
