@@ -7,9 +7,7 @@ pub use app::App;
 
 use anyhow::{Context, Result};
 use crossterm::{
-    event::{
-        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyModifiers,
-    },
+    event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -84,7 +82,10 @@ pub async fn run(config: TuiConfig) -> Result<()> {
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    // NB: we intentionally do NOT EnableMouseCapture — capturing the mouse would
+    // disable the terminal's native click-drag text selection, which users need
+    // to copy errors out of the log view. We don't consume mouse events anyway.
+    execute!(stdout, EnterAlternateScreen)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
@@ -106,11 +107,7 @@ pub async fn run(config: TuiConfig) -> Result<()> {
 
     // Restore terminal
     disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
 
     if let Err(err) = result {
@@ -271,6 +268,8 @@ fn handle_input(app: &mut App, key: KeyEvent) -> Result<bool> {
             KeyCode::End => app.scroll_logs_to_bottom(),
             // Toggle auto-scroll
             KeyCode::Char('f') | KeyCode::Char('F') => app.toggle_auto_scroll(),
+            // Toggle soft-wrap of long lines
+            KeyCode::Char('w') | KeyCode::Char('W') => app.toggle_wrap(),
             _ => {}
         },
         app::View::Detail(_) => match key.code {

@@ -6,7 +6,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph},
+    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
     Frame,
 };
 
@@ -275,10 +275,21 @@ fn render_service_list(frame: &mut Frame, app: &App, area: Rect) {
             ),
         ];
 
-        // Append error snippet for failed services
+        // Append error snippet for failed services. Size the snippet to the space
+        // actually left on the row (the preceding columns occupy ~83 cols) rather
+        // than a fixed 60 chars, so wide terminals show more of the error. The
+        // full error is always available in the detail view.
         if service.status == ServiceStatus::Failed {
             if let Some(ref error) = service.last_error {
-                let truncated: String = error.chars().take(60).collect();
+                let cap = (area.width as usize).saturating_sub(84).max(20);
+                let error = error.replace(['\n', '\r', '\t'], " ");
+                let truncated: String = if error.chars().count() > cap {
+                    let mut s: String = error.chars().take(cap.saturating_sub(1)).collect();
+                    s.push('…');
+                    s
+                } else {
+                    error
+                };
                 spans.push(Span::styled(truncated, row_style.fg(STATUS_FAILED)));
             }
         }
@@ -398,32 +409,56 @@ fn render_logs_view(frame: &mut Frame, app: &App, service: &str) {
     // Calculate which logs to show based on scroll position
     // log_scroll=0 means we're at the bottom (newest logs)
     // log_scroll=N means we're N lines up from the bottom
+    let content_width = logs_chunks[0].width as usize;
     let log_lines: Vec<Line> = if total_logs == 0 {
         vec![Line::from(Span::styled(
             "No logs yet. Waiting for output...",
             Style::default().fg(DIM_FG),
         ))]
+    } else if app.wrap_logs {
+        // Soft-wrap: build visual rows from the bottom up so long lines are fully
+        // visible and the newest output always anchors the bottom. `log_scroll`
+        // is an offset in whole log entries from the bottom.
+        const GUTTER: usize = 5; // width of the "{:4} " line-number prefix
+        let avail = content_width.saturating_sub(GUTTER).max(1);
+        let end_entry = total_logs.saturating_sub(app.log_scroll);
+
+        let mut rows_rev: Vec<Line> = Vec::with_capacity(visible_height);
+        'build: for idx in (0..end_entry).rev() {
+            let line = &logs[idx];
+            let style = line_style(line);
+            let segments = wrap_str(line, avail);
+            let line_num = idx + 1;
+            // Push this entry's rows bottom-most first; the line number sits on
+            // the first visual row, continuations are indented under the gutter.
+            for (seg_i, seg) in segments.iter().enumerate().rev() {
+                let prefix = if seg_i == 0 {
+                    format!("{:4} ", line_num)
+                } else {
+                    " ".repeat(GUTTER)
+                };
+                rows_rev.push(Line::from(vec![
+                    Span::styled(prefix, Style::default().fg(DIM_FG)),
+                    Span::styled(seg.clone(), style),
+                ]));
+                if rows_rev.len() >= visible_height {
+                    break 'build;
+                }
+            }
+        }
+        rows_rev.into_iter().take(visible_height).rev().collect()
     } else {
+        // No wrap: one (clipped) row per entry, windowed by entries.
         let end_idx = total_logs.saturating_sub(app.log_scroll);
         let start_idx = end_idx.saturating_sub(visible_height);
-
         logs[start_idx..end_idx]
             .iter()
             .enumerate()
             .map(|(i, line)| {
-                // Add line numbers for easier reference
                 let line_num = start_idx + i + 1;
-                // Color code based on content
-                let style = if line.contains("ERROR") || line.contains("error") {
-                    Style::default().fg(STATUS_FAILED)
-                } else if line.contains("WARN") || line.contains("warn") {
-                    Style::default().fg(STATUS_RUNNING)
-                } else {
-                    Style::default().fg(HEADER_FG)
-                };
                 Line::from(vec![
                     Span::styled(format!("{:4} ", line_num), Style::default().fg(DIM_FG)),
-                    Span::styled(line.as_str(), style),
+                    Span::styled(line.as_str(), line_style(line)),
                 ])
             })
             .collect()
@@ -451,6 +486,8 @@ fn render_logs_view(frame: &mut Frame, app: &App, service: &str) {
         Span::styled("Top/Bot ", Style::default().fg(DIM_FG)),
         Span::styled("<f>", Style::default().fg(STATUS_HEALTHY)),
         Span::styled("Follow ", Style::default().fg(DIM_FG)),
+        Span::styled("<w>", Style::default().fg(STATUS_HEALTHY)),
+        Span::styled("Wrap ", Style::default().fg(DIM_FG)),
         Span::styled("<esc>", Style::default().fg(STATUS_HEALTHY)),
         Span::styled("Back ", Style::default().fg(DIM_FG)),
         Span::styled("<q>", Style::default().fg(STATUS_FAILED)),
@@ -718,7 +755,9 @@ fn render_detail_view(frame: &mut Frame, app: &App, service: &str) {
         }
     }
 
-    let detail_para = Paragraph::new(details).block(Block::default().borders(Borders::NONE));
+    let detail_para = Paragraph::new(details)
+        .block(Block::default().borders(Borders::NONE))
+        .wrap(Wrap { trim: false });
     frame.render_widget(detail_para, chunks[1]);
 
     // Footer
@@ -788,4 +827,63 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(popup_layout[1])[1]
+}
+
+/// Color a log line by detected severity in its text.
+fn line_style(line: &str) -> Style {
+    if line.contains("ERROR") || line.contains("error") {
+        Style::default().fg(STATUS_FAILED)
+    } else if line.contains("WARN") || line.contains("warn") {
+        Style::default().fg(STATUS_RUNNING)
+    } else {
+        Style::default().fg(HEADER_FG)
+    }
+}
+
+/// Split a string into chunks of at most `width` characters. Char-based, which
+/// approximates terminal columns closely enough for log text. An empty string
+/// yields a single empty segment so it still occupies one visual row.
+fn wrap_str(s: &str, width: usize) -> Vec<String> {
+    if s.is_empty() {
+        return vec![String::new()];
+    }
+    let width = width.max(1);
+    let chars: Vec<char> = s.chars().collect();
+    let mut out: Vec<String> = Vec::with_capacity(chars.len() / width + 1);
+    let mut i = 0;
+    while i < chars.len() {
+        let end = (i + width).min(chars.len());
+        out.push(chars[i..end].iter().collect());
+        i = end;
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::wrap_str;
+
+    #[test]
+    fn wrap_empty_yields_one_row() {
+        assert_eq!(wrap_str("", 10), vec![String::new()]);
+    }
+
+    #[test]
+    fn wrap_short_line_is_single_segment() {
+        assert_eq!(wrap_str("hello", 10), vec!["hello".to_string()]);
+    }
+
+    #[test]
+    fn wrap_splits_on_width() {
+        assert_eq!(
+            wrap_str("abcdefg", 3),
+            vec!["abc".to_string(), "def".to_string(), "g".to_string()]
+        );
+    }
+
+    #[test]
+    fn wrap_zero_width_is_safe() {
+        // width clamps to 1, so no panic and one char per row
+        assert_eq!(wrap_str("ab", 0).len(), 2);
+    }
 }

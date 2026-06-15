@@ -36,8 +36,9 @@ pub struct App {
     pub selected_index: usize,
     pub service_list: Vec<String>,
     pub logs: HashMap<String, Vec<String>>, // per-service logs
-    pub log_scroll: usize,                  // scroll offset from bottom (0 = at bottom)
+    pub log_scroll: usize,                  // scroll offset from bottom, in log entries (0 = at bottom)
     pub auto_scroll: bool,                  // auto-scroll to new logs
+    pub wrap_logs: bool,                    // soft-wrap long log lines instead of clipping
     pub should_quit: bool,
     pub show_confirmation: bool,
     pub confirmation_message: String,
@@ -60,6 +61,7 @@ impl App {
             logs: HashMap::new(),
             log_scroll: 0,
             auto_scroll: true,
+            wrap_logs: true,
             should_quit: false,
             show_confirmation: false,
             confirmation_message: String::new(),
@@ -273,6 +275,11 @@ impl App {
     pub fn scroll_logs_to_bottom(&mut self) {
         self.log_scroll = 0;
         self.auto_scroll = true;
+    }
+
+    /// Toggle soft-wrapping of long log lines.
+    pub fn toggle_wrap(&mut self) {
+        self.wrap_logs = !self.wrap_logs;
     }
 
     /// Toggle auto-scroll mode
