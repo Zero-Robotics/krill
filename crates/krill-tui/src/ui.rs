@@ -521,11 +521,10 @@ fn render_scroll_bar(
     // Calculate thumb position and size
     let thumb_size = ((visible_lines * height) / total_lines).max(1).min(height);
     let position = scrollable.saturating_sub(scroll_offset);
-    let thumb_pos = if scrollable > 0 {
-        ((position * (height - thumb_size)) / scrollable).min(height - thumb_size)
-    } else {
-        0
-    };
+    let thumb_pos = (position * (height - thumb_size))
+        .checked_div(scrollable)
+        .unwrap_or(0)
+        .min(height - thumb_size);
 
     let mut lines: Vec<Line> = Vec::with_capacity(height);
     for i in 0..height {
