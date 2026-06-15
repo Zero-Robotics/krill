@@ -1,0 +1,37 @@
+/* Krill custom styling */
+:root {
+    --md-primary-fg-color: #094183;
+    --md-accent-fg-color: #33dfe8;
+}
+
+/* Gradient header bar and nav tabs */
+.md-header,
+.md-tabs {
+    background: linear-gradient(90deg, #094183, #33dfe8);
+}
+
+/* Code blocks with robotics feel */
+.md-typeset code {
+    background-color: rgba(103, 58, 183, 0.1);
+    border-radius: 0.2rem;
+}
+
+/* Highlight ROS2 and Rust keywords */
+.md-typeset .language-bash .n {
+    color: var(--md-accent-fg-color);
+}
+
+/* Custom admonition for ROS2-specific notes */
+.md-typeset .admonition.ros2 {
+    border-left-color: #22a699;
+}
+
+/* Performance metrics styling */
+.performance-metric {
+    display: inline-block;
+    padding: 0.2rem 0.5rem;
+    background: rgba(0, 188, 212, 0.1);
+    border-left: 3px solid var(--md-accent-fg-color);
+    border-radius: 0.2rem;
+    margin: 0.5rem 0;
+}
