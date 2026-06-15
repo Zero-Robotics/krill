@@ -36,9 +36,9 @@ pub struct App {
     pub selected_index: usize,
     pub service_list: Vec<String>,
     pub logs: HashMap<String, Vec<String>>, // per-service logs
-    pub log_scroll: usize,                  // scroll offset from bottom, in log entries (0 = at bottom)
-    pub auto_scroll: bool,                  // auto-scroll to new logs
-    pub wrap_logs: bool,                    // soft-wrap long log lines instead of clipping
+    pub log_scroll: usize, // scroll offset from bottom, in log entries (0 = at bottom)
+    pub auto_scroll: bool, // auto-scroll to new logs
+    pub wrap_logs: bool,   // soft-wrap long log lines instead of clipping
     pub should_quit: bool,
     pub show_confirmation: bool,
     pub confirmation_message: String,
