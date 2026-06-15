@@ -296,8 +296,9 @@ mod tests {
         // reconstructed text is unchanged
         assert_eq!(texts(&out), "find the ITEM here");
         // one run carries the highlight modifier
-        assert!(out.iter().any(|r| r.text == "ITEM"
-            && r.style.add_modifier.contains(Modifier::REVERSED)));
+        assert!(out
+            .iter()
+            .any(|r| r.text == "ITEM" && r.style.add_modifier.contains(Modifier::REVERSED)));
     }
 
     #[test]

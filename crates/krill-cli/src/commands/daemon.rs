@@ -204,8 +204,7 @@ pub async fn execute(args: DaemonArgs) -> Result<()> {
                 .add_log(&entry.service, entry.text.clone(), entry.level)
                 .await;
             // Broadcast to connected clients with stream + level.
-            ipc_server_clone
-                .broadcast_log(entry.service, entry.text, entry.stream, entry.level);
+            ipc_server_clone.broadcast_log(entry.service, entry.text, entry.stream, entry.level);
         }
     });
 

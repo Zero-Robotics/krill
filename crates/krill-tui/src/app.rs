@@ -1,7 +1,9 @@
 // TUI Application State
 
 use crate::richtext::strip_ansi;
-use krill_common::{ClientMessage, CommandAction, LogLevel, LogStream, ServerMessage, ServiceStatus};
+use krill_common::{
+    ClientMessage, CommandAction, LogLevel, LogStream, ServerMessage, ServiceStatus,
+};
 use std::collections::HashMap;
 use std::io;
 use tokio::sync::mpsc;

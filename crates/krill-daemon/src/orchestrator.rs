@@ -99,9 +99,7 @@ fn infer_level(text: &str, stream: LogStream) -> LogLevel {
     let lower = text.to_ascii_lowercase();
     if lower.contains("error") || lower.contains("panic") || lower.contains("fatal") {
         LogLevel::Error
-    } else if lower.contains("warn") {
-        LogLevel::Warn
-    } else if stream == LogStream::Stderr {
+    } else if lower.contains("warn") || stream == LogStream::Stderr {
         LogLevel::Warn
     } else {
         LogLevel::Info
