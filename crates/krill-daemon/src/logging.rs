@@ -59,6 +59,17 @@ pub enum LogLevel {
     Error,
 }
 
+impl From<krill_common::LogLevel> for LogLevel {
+    fn from(l: krill_common::LogLevel) -> Self {
+        match l {
+            krill_common::LogLevel::Trace | krill_common::LogLevel::Debug => LogLevel::Debug,
+            krill_common::LogLevel::Info => LogLevel::Info,
+            krill_common::LogLevel::Warn => LogLevel::Warn,
+            krill_common::LogLevel::Error => LogLevel::Error,
+        }
+    }
+}
+
 /// Thread-safe log storage with file persistence
 pub struct LogStore {
     /// In-memory log buffer per service
@@ -105,8 +116,8 @@ impl LogStore {
         }))
     }
 
-    /// Add a log line for a service
-    pub async fn add_log(&self, service: &str, line: String) {
+    /// Add a log line for a service, tagged with its inferred severity.
+    pub async fn add_log(&self, service: &str, line: String, level: krill_common::LogLevel) {
         // Add to in-memory buffer
         {
             let mut logs = self.logs.write().await;
@@ -134,7 +145,7 @@ impl LogStore {
             let event = TimelineEvent {
                 timestamp: Utc::now(),
                 service: service.to_string(),
-                level: LogLevel::Info,
+                level: LogLevel::from(level),
                 message: line,
             };
             if let Ok(json) = serde_json::to_string(&event) {
@@ -202,120 +213,6 @@ impl LogStore {
         }
     }
 }
-
-// Keep the old LogManager for backward compatibility but mark as deprecated
-// #[deprecated(note = "Use LogStore instead")]
-// pub struct LogManager {
-//     session_dir: PathBuf,
-//     timeline_file: File,
-// }
-
-// impl LogManager {
-//     pub fn new(base_dir: Option<PathBuf>) -> Result<Self, LogError> {
-//         // Default to ~/.krill/logs if not specified
-//         let base_dir = base_dir.unwrap_or_else(|| {
-//             let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
-//             home.join(".krill").join("logs")
-//         });
-
-//         // Create session directory with timestamp
-//         let timestamp = Utc::now().format("%Y%m%d-%H%M%S");
-//         let session_dir = base_dir.join(format!("session-{}", timestamp));
-
-//         fs::create_dir_all(&session_dir)?;
-//         info!("Created log session directory: {:?}", session_dir);
-
-//         // Create timeline.jsonl file
-//         let timeline_path = session_dir.join("timeline.jsonl");
-//         let timeline_file = OpenOptions::new()
-//             .create(true)
-//             .append(true)
-//             .open(&timeline_path)?;
-
-//         // Create krill.log file for daemon logs
-//         let daemon_log_path = session_dir.join("krill.log");
-//         File::create(daemon_log_path)?;
-
-//         Ok(Self {
-//             session_dir,
-//             timeline_file,
-//         })
-//     }
-
-//     /// Get the path to a service's log file
-//     pub fn get_service_log_path(&self, service_name: &str) -> PathBuf {
-//         self.session_dir.join(format!("{}.log", service_name))
-//     }
-
-//     /// Create a log file for a service
-//     pub fn create_service_log(&self, service_name: &str) -> Result<File, LogError> {
-//         let log_path = self.get_service_log_path(service_name);
-//         let file = OpenOptions::new()
-//             .create(true)
-//             .append(true)
-//             .open(log_path)?;
-//         Ok(file)
-//     }
-
-//     /// Write to timeline
-//     pub fn write_timeline(
-//         &mut self,
-//         service: &str,
-//         level: LogLevel,
-//         message: &str,
-//     ) -> Result<(), LogError> {
-//         let event = TimelineEvent {
-//             timestamp: Utc::now(),
-//             service: service.to_string(),
-//             level,
-//             message: message.to_string(),
-//         };
-
-//         let json = serde_json::to_string(&event)?;
-//         writeln!(self.timeline_file, "{}", json)?;
-//         self.timeline_file.flush()?;
-
-//         Ok(())
-//     }
-
-//     /// Write to a service log file
-//     pub fn write_service_log(&self, service_name: &str, line: &str) -> Result<(), LogError> {
-//         let log_path = self.get_service_log_path(service_name);
-
-//         let mut file = OpenOptions::new()
-//             .create(true)
-//             .append(true)
-//             .open(log_path)?;
-
-//         let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S%.3f");
-//         writeln!(file, "[{}] {}", timestamp, line)?;
-//         file.flush()?;
-
-//         Ok(())
-//     }
-
-//     /// Log a daemon event
-//     pub fn log_daemon(&mut self, level: LogLevel, message: &str) -> Result<(), LogError> {
-//         self.write_timeline("krill-daemon", level.clone(), message)?;
-
-//         let daemon_log_path = self.session_dir.join("krill.log");
-//         let mut file = OpenOptions::new()
-//             .create(true)
-//             .append(true)
-//             .open(daemon_log_path)?;
-
-//         let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S%.3f");
-//         writeln!(file, "[{}] {:?} {}", timestamp, level, message)?;
-//         file.flush()?;
-
-//         Ok(())
-//     }
-
-//     /// Get session directory path
-//     pub fn session_dir(&self) -> &Path {
-//         &self.session_dir
-//     }
-// }
 
 /// Service log writer - handles stdout/stderr from a service process
 pub struct ServiceLogWriter {

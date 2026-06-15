@@ -2,7 +2,8 @@
 
 use crate::runner::{RunnerError, ServiceRunner, ServiceState};
 use krill_common::{
-    DagError, Dependency, DependencyCondition, DependencyGraph, KrillConfig, ServiceStatus,
+    DagError, Dependency, DependencyCondition, DependencyGraph, KrillConfig, LogLevel, LogStream,
+    ServiceStatus,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -28,14 +29,91 @@ pub enum OrchestratorError {
 }
 
 pub type ServiceEvent = (String, ServiceStatus);
-pub type LogLine = (String, String); // (service_name, line)
+
+/// One captured line of service output, tagged with its source stream and an
+/// inferred severity. ANSI escape sequences are stripped at capture time so
+/// downstream (files, TUI) never has to deal with control bytes.
+#[derive(Debug, Clone)]
+pub struct LogLine {
+    pub service: String,
+    pub text: String,
+    pub stream: LogStream,
+    pub level: LogLevel,
+}
+
+/// Hard cap on a single captured line; pathological no-newline streams can't
+/// buffer unbounded memory in one record.
+const MAX_LINE_LEN: usize = 8192;
+
+/// Remove ANSI/VT escape sequences (CSI `ESC[ … <final>` and the like) so
+/// colored node output renders as text instead of leaking control codes.
+fn strip_ansi(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' {
+            // ESC: consume an escape sequence rather than emitting it.
+            match chars.peek() {
+                Some('[') => {
+                    chars.next();
+                    // CSI: params/intermediates until a final byte in @..~.
+                    for c2 in chars.by_ref() {
+                        if ('\u{40}'..='\u{7e}').contains(&c2) {
+                            break;
+                        }
+                    }
+                }
+                Some(']') => {
+                    // OSC: terminated by BEL or ESC\.
+                    chars.next();
+                    while let Some(&c2) = chars.peek() {
+                        if c2 == '\u{07}' {
+                            chars.next();
+                            break;
+                        }
+                        if c2 == '\u{1b}' {
+                            chars.next();
+                            if chars.peek() == Some(&'\\') {
+                                chars.next();
+                            }
+                            break;
+                        }
+                        chars.next();
+                    }
+                }
+                _ => {
+                    // Lone ESC or two-char sequence: skip the next char if any.
+                    chars.next();
+                }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// Infer a severity for a line from its stream and text. stderr starts at Warn;
+/// explicit error/panic markers escalate to Error.
+fn infer_level(text: &str, stream: LogStream) -> LogLevel {
+    let lower = text.to_ascii_lowercase();
+    if lower.contains("error") || lower.contains("panic") || lower.contains("fatal") {
+        LogLevel::Error
+    } else if lower.contains("warn") {
+        LogLevel::Warn
+    } else if stream == LogStream::Stderr {
+        LogLevel::Warn
+    } else {
+        LogLevel::Info
+    }
+}
 
 pub struct Orchestrator {
     config: Arc<KrillConfig>,
     dag: Arc<DependencyGraph>,
     runners: Arc<RwLock<HashMap<String, Arc<Mutex<ServiceRunner>>>>>,
     event_tx: mpsc::UnboundedSender<ServiceEvent>,
-    log_tx: Option<mpsc::UnboundedSender<LogLine>>,
+    log_tx: Option<mpsc::Sender<LogLine>>,
     shutdown: Arc<Mutex<bool>>,
 }
 
@@ -50,7 +128,7 @@ impl Orchestrator {
     pub fn with_log_tx(
         config: KrillConfig,
         event_tx: mpsc::UnboundedSender<ServiceEvent>,
-        log_tx: Option<mpsc::UnboundedSender<LogLine>>,
+        log_tx: Option<mpsc::Sender<LogLine>>,
     ) -> Result<Self, OrchestratorError> {
         // Build dependency graph
         let deps_map: HashMap<String, Vec<Dependency>> = config
@@ -214,21 +292,41 @@ impl Orchestrator {
         R: tokio::io::AsyncRead + Unpin + Send + 'static,
     {
         let log_tx = self.log_tx.clone();
+        let stream = if is_stderr {
+            LogStream::Stderr
+        } else {
+            LogStream::Stdout
+        };
         let stream_type = if is_stderr { "stderr" } else { "stdout" };
 
         tokio::spawn(async move {
             let mut lines = BufReader::new(reader).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                // Log to tracing
+            while let Ok(Some(raw)) = lines.next_line().await {
+                // Bound the length, but keep ANSI intact so the TUI can render the
+                // service's original colors. Inference/tracing use a stripped copy.
+                let mut text = raw;
+                if text.chars().count() > MAX_LINE_LEN {
+                    text = text.chars().take(MAX_LINE_LEN).collect::<String>() + " …[truncated]";
+                }
+                let clean = strip_ansi(&text);
+
+                // Log to tracing (without control bytes).
                 if is_stderr {
-                    warn!("[{}] {}", service_name, line);
+                    warn!("[{}] {}", service_name, clean);
                 } else {
-                    info!("[{}] {}", service_name, line);
+                    info!("[{}] {}", service_name, clean);
                 }
 
-                // Send to log channel if available
+                // Send to log channel if available. try_send drops on a full queue
+                // (flood protection) rather than stalling the reader.
                 if let Some(ref tx) = log_tx {
-                    let _ = tx.send((service_name.clone(), line));
+                    let level = infer_level(&clean, stream);
+                    let _ = tx.try_send(LogLine {
+                        service: service_name.clone(),
+                        text,
+                        stream,
+                        level,
+                    });
                 }
             }
             debug!("[{}] {} stream closed", service_name, stream_type);

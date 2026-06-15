@@ -2,7 +2,9 @@
 
 use crate::logging::LogStore;
 use krill_common::ipc::ServiceSnapshot;
-use krill_common::{ClientMessage, CommandAction, ServerMessage, ServiceStatus};
+use krill_common::{
+    ClientMessage, CommandAction, LogLevel, LogStream, ServerMessage, ServiceStatus,
+};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -157,8 +159,13 @@ impl IpcServer {
     }
 
     /// Broadcast a log message to clients
-    pub fn broadcast_log(&self, service: String, line: String) {
-        let message = ServerMessage::LogLine { service, line };
+    pub fn broadcast_log(&self, service: String, line: String, stream: LogStream, level: LogLevel) {
+        let message = ServerMessage::LogLine {
+            service,
+            line,
+            stream,
+            level,
+        };
         let _ = self.event_broadcast.send(message);
     }
 }

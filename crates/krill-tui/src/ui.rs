@@ -1,7 +1,8 @@
 // TUI Rendering
 
 use crate::app::{App, View};
-use krill_common::ServiceStatus;
+use crate::richtext::{highlight, parse_ansi, wrap_runs};
+use krill_common::{LogLevel, ServiceStatus};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -164,7 +165,11 @@ fn render_header(frame: &mut Frame, app: &App, area: Rect) {
         Span::raw("  "),
         Span::styled("DISK: ", Style::default().fg(DIM_FG)),
         Span::styled(
-            format!("{:.2}GB/{:.2}GB", app.disk_usage_gb, app.disk_total_gb),
+            format!(
+                "{}/{}",
+                fmt_disk(app.disk_usage_gb),
+                fmt_disk(app.disk_total_gb)
+            ),
             Style::default().fg(disk_color),
         ),
     ]);
@@ -372,6 +377,27 @@ fn render_logs_view(frame: &mut Frame, app: &App, service: &str) {
         )
     };
 
+    // Search / filter / transient-status indicator.
+    let aux = if app.log_search_editing {
+        Span::styled(
+            format!("  /{}\u{2588}", app.log_search_buffer),
+            Style::default()
+                .fg(STATUS_STARTING)
+                .add_modifier(Modifier::BOLD),
+        )
+    } else if !app.log_search.is_empty() {
+        Span::styled(
+            format!("  search: {}", app.log_search),
+            Style::default()
+                .fg(STATUS_STARTING)
+                .add_modifier(Modifier::BOLD),
+        )
+    } else if let Some(msg) = &app.status_message {
+        Span::styled(format!("  {}", msg), Style::default().fg(STATUS_HEALTHY))
+    } else {
+        Span::raw("")
+    };
+
     let header = Paragraph::new(Line::from(vec![
         Span::styled(
             " krill ",
@@ -388,6 +414,7 @@ fn render_logs_view(frame: &mut Frame, app: &App, service: &str) {
         ),
         Span::styled(scroll_info, Style::default().fg(DIM_FG)),
         auto_scroll_indicator,
+        aux,
     ]))
     .style(Style::default().bg(HEADER_BG))
     .block(
@@ -409,7 +436,28 @@ fn render_logs_view(frame: &mut Frame, app: &App, service: &str) {
     // Calculate which logs to show based on scroll position
     // log_scroll=0 means we're at the bottom (newest logs)
     // log_scroll=N means we're N lines up from the bottom
+    const GUTTER: usize = 5; // width of the "{:>4} " line-number prefix
     let content_width = logs_chunks[0].width as usize;
+    let avail = content_width.saturating_sub(GUTTER).max(1);
+    let base = Style::default().fg(HEADER_FG);
+    let search = app.log_search.as_str();
+
+    // Parse a stored line into highlighted, styled runs (ANSI colors preserved).
+    let styled = |text: &str| {
+        let runs = parse_ansi(text, base);
+        if search.is_empty() {
+            runs
+        } else {
+            highlight(runs, search, Modifier::REVERSED)
+        }
+    };
+    let gutter = |line_num: usize, level: LogLevel| {
+        Span::styled(
+            format!("{:>4} ", line_num),
+            Style::default().fg(level_color(level)),
+        )
+    };
+
     let log_lines: Vec<Line> = if total_logs == 0 {
         vec![Line::from(Span::styled(
             "No logs yet. Waiting for output...",
@@ -419,28 +467,25 @@ fn render_logs_view(frame: &mut Frame, app: &App, service: &str) {
         // Soft-wrap: build visual rows from the bottom up so long lines are fully
         // visible and the newest output always anchors the bottom. `log_scroll`
         // is an offset in whole log entries from the bottom.
-        const GUTTER: usize = 5; // width of the "{:4} " line-number prefix
-        let avail = content_width.saturating_sub(GUTTER).max(1);
         let end_entry = total_logs.saturating_sub(app.log_scroll);
-
         let mut rows_rev: Vec<Line> = Vec::with_capacity(visible_height);
         'build: for idx in (0..end_entry).rev() {
-            let line = &logs[idx];
-            let style = line_style(line);
-            let segments = wrap_str(line, avail);
-            let line_num = idx + 1;
+            let entry = &logs[idx];
+            let runs = styled(&entry.text);
+            let wrapped = wrap_runs(&runs, avail);
             // Push this entry's rows bottom-most first; the line number sits on
             // the first visual row, continuations are indented under the gutter.
-            for (seg_i, seg) in segments.iter().enumerate().rev() {
-                let prefix = if seg_i == 0 {
-                    format!("{:4} ", line_num)
+            for (seg_i, row_runs) in wrapped.iter().enumerate().rev() {
+                let mut spans: Vec<Span> = Vec::with_capacity(row_runs.len() + 1);
+                if seg_i == 0 {
+                    spans.push(gutter(idx + 1, entry.level));
                 } else {
-                    " ".repeat(GUTTER)
-                };
-                rows_rev.push(Line::from(vec![
-                    Span::styled(prefix, Style::default().fg(DIM_FG)),
-                    Span::styled(seg.clone(), style),
-                ]));
+                    spans.push(Span::styled(" ".repeat(GUTTER), Style::default()));
+                }
+                for r in row_runs {
+                    spans.push(Span::styled(r.text.clone(), r.style));
+                }
+                rows_rev.push(Line::from(spans));
                 if rows_rev.len() >= visible_height {
                     break 'build;
                 }
@@ -451,15 +496,14 @@ fn render_logs_view(frame: &mut Frame, app: &App, service: &str) {
         // No wrap: one (clipped) row per entry, windowed by entries.
         let end_idx = total_logs.saturating_sub(app.log_scroll);
         let start_idx = end_idx.saturating_sub(visible_height);
-        logs[start_idx..end_idx]
-            .iter()
-            .enumerate()
-            .map(|(i, line)| {
-                let line_num = start_idx + i + 1;
-                Line::from(vec![
-                    Span::styled(format!("{:4} ", line_num), Style::default().fg(DIM_FG)),
-                    Span::styled(line.as_str(), line_style(line)),
-                ])
+        (start_idx..end_idx)
+            .map(|idx| {
+                let entry = &logs[idx];
+                let mut spans: Vec<Span> = vec![gutter(idx + 1, entry.level)];
+                for r in styled(&entry.text) {
+                    spans.push(Span::styled(r.text, r.style));
+                }
+                Line::from(spans)
             })
             .collect()
     };
@@ -488,6 +532,12 @@ fn render_logs_view(frame: &mut Frame, app: &App, service: &str) {
         Span::styled("Follow ", Style::default().fg(DIM_FG)),
         Span::styled("<w>", Style::default().fg(STATUS_HEALTHY)),
         Span::styled("Wrap ", Style::default().fg(DIM_FG)),
+        Span::styled("</>", Style::default().fg(STATUS_HEALTHY)),
+        Span::styled("Find ", Style::default().fg(DIM_FG)),
+        Span::styled("<n/N>", Style::default().fg(STATUS_HEALTHY)),
+        Span::styled("Match ", Style::default().fg(DIM_FG)),
+        Span::styled("<e>", Style::default().fg(STATUS_HEALTHY)),
+        Span::styled("Export ", Style::default().fg(DIM_FG)),
         Span::styled("<esc>", Style::default().fg(STATUS_HEALTHY)),
         Span::styled("Back ", Style::default().fg(DIM_FG)),
         Span::styled("<q>", Style::default().fg(STATUS_FAILED)),
@@ -828,61 +878,22 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
         .split(popup_layout[1])[1]
 }
 
-/// Color a log line by detected severity in its text.
-fn line_style(line: &str) -> Style {
-    if line.contains("ERROR") || line.contains("error") {
-        Style::default().fg(STATUS_FAILED)
-    } else if line.contains("WARN") || line.contains("warn") {
-        Style::default().fg(STATUS_RUNNING)
+/// Format a size given in GB, scaling to TB past 1000 GB so terabyte disks read
+/// naturally (e.g. "946GB", "1.86TB") instead of huge GB numbers.
+fn fmt_disk(gb: f32) -> String {
+    if gb >= 1000.0 {
+        format!("{:.2}TB", gb / 1024.0)
     } else {
-        Style::default().fg(HEADER_FG)
+        format!("{:.0}GB", gb)
     }
 }
 
-/// Split a string into chunks of at most `width` characters. Char-based, which
-/// approximates terminal columns closely enough for log text. An empty string
-/// yields a single empty segment so it still occupies one visual row.
-fn wrap_str(s: &str, width: usize) -> Vec<String> {
-    if s.is_empty() {
-        return vec![String::new()];
-    }
-    let width = width.max(1);
-    let chars: Vec<char> = s.chars().collect();
-    let mut out: Vec<String> = Vec::with_capacity(chars.len() / width + 1);
-    let mut i = 0;
-    while i < chars.len() {
-        let end = (i + width).min(chars.len());
-        out.push(chars[i..end].iter().collect());
-        i = end;
-    }
-    out
-}
-
-#[cfg(test)]
-mod tests {
-    use super::wrap_str;
-
-    #[test]
-    fn wrap_empty_yields_one_row() {
-        assert_eq!(wrap_str("", 10), vec![String::new()]);
-    }
-
-    #[test]
-    fn wrap_short_line_is_single_segment() {
-        assert_eq!(wrap_str("hello", 10), vec!["hello".to_string()]);
-    }
-
-    #[test]
-    fn wrap_splits_on_width() {
-        assert_eq!(
-            wrap_str("abcdefg", 3),
-            vec!["abc".to_string(), "def".to_string(), "g".to_string()]
-        );
-    }
-
-    #[test]
-    fn wrap_zero_width_is_safe() {
-        // width clamps to 1, so no panic and one char per row
-        assert_eq!(wrap_str("ab", 0).len(), 2);
+/// Color the line-number gutter by the line's inferred severity. The text body
+/// keeps its own (ANSI) colors; the gutter is where level/stderr shows through.
+fn level_color(level: LogLevel) -> Color {
+    match level {
+        LogLevel::Error => STATUS_FAILED,
+        LogLevel::Warn => STATUS_RUNNING,
+        _ => DIM_FG,
     }
 }

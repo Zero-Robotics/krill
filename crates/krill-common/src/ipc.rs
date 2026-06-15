@@ -64,6 +64,13 @@ pub enum ServerMessage {
     LogLine {
         service: String,
         line: String,
+        /// Which stream the line came from. Defaulted for backward compatibility
+        /// with older daemons that only sent `service` + `line`.
+        #[serde(default)]
+        stream: LogStream,
+        /// Inferred severity of the line.
+        #[serde(default)]
+        level: LogLevel,
     },
     Snapshot {
         services: HashMap<String, ServiceSnapshot>,
@@ -104,14 +111,24 @@ pub struct ServiceSnapshot {
     pub max_restarts: u32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum LogLevel {
     Trace,
     Debug,
+    #[default]
     Info,
     Warn,
     Error,
+}
+
+/// Which of a process's output streams a log line came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum LogStream {
+    #[default]
+    Stdout,
+    Stderr,
 }
 
 #[cfg(test)]

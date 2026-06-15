@@ -1,6 +1,7 @@
 // TUI Application State
 
-use krill_common::{ClientMessage, CommandAction, ServerMessage, ServiceStatus};
+use crate::richtext::strip_ansi;
+use krill_common::{ClientMessage, CommandAction, LogLevel, LogStream, ServerMessage, ServiceStatus};
 use std::collections::HashMap;
 use std::io;
 use tokio::sync::mpsc;
@@ -10,6 +11,27 @@ pub enum View {
     List,
     Logs(String),   // service name
     Detail(String), // service name
+}
+
+/// One stored log line: the raw text (may contain ANSI), plus the stream and
+/// severity the daemon tagged it with (used for gutter color / stderr flagging).
+#[derive(Debug, Clone)]
+pub struct LogEntry {
+    pub text: String,
+    pub level: LogLevel,
+    pub stream: LogStream,
+}
+
+/// Infer a level from text alone (for history lines, which arrive untagged).
+fn infer_level_text(text: &str) -> LogLevel {
+    let lower = text.to_ascii_lowercase();
+    if lower.contains("error") || lower.contains("panic") || lower.contains("fatal") {
+        LogLevel::Error
+    } else if lower.contains("warn") {
+        LogLevel::Warn
+    } else {
+        LogLevel::Info
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -35,10 +57,14 @@ pub struct App {
     pub services: HashMap<String, ServiceState>,
     pub selected_index: usize,
     pub service_list: Vec<String>,
-    pub logs: HashMap<String, Vec<String>>, // per-service logs
+    pub logs: HashMap<String, Vec<LogEntry>>, // per-service logs
     pub log_scroll: usize, // scroll offset from bottom, in log entries (0 = at bottom)
     pub auto_scroll: bool, // auto-scroll to new logs
     pub wrap_logs: bool,   // soft-wrap long log lines instead of clipping
+    pub log_search: String, // active search term (highlighted; empty = none)
+    pub log_search_editing: bool, // currently typing into the search box
+    pub log_search_buffer: String, // in-progress search text while editing
+    pub status_message: Option<String>, // transient status (e.g. export path)
     pub should_quit: bool,
     pub show_confirmation: bool,
     pub confirmation_message: String,
@@ -62,6 +88,10 @@ impl App {
             log_scroll: 0,
             auto_scroll: true,
             wrap_logs: true,
+            log_search: String::new(),
+            log_search_editing: false,
+            log_search_buffer: String::new(),
+            status_message: None,
             should_quit: false,
             show_confirmation: false,
             confirmation_message: String::new(),
@@ -101,10 +131,19 @@ impl App {
                 // Update service list
                 self.update_service_list();
             }
-            ServerMessage::LogLine { service, line } => {
+            ServerMessage::LogLine {
+                service,
+                line,
+                stream,
+                level,
+            } => {
                 // Store logs per-service
                 let service_logs = self.logs.entry(service.clone()).or_default();
-                service_logs.push(line);
+                service_logs.push(LogEntry {
+                    text: line,
+                    level,
+                    stream,
+                });
 
                 // Keep only last 2000 lines per service
                 if service_logs.len() > 2000 {
@@ -156,16 +195,27 @@ impl App {
                 self.disk_total_gb = disk_total_gb;
             }
             ServerMessage::LogHistory { service, lines } => {
-                // Prepend history to existing logs
+                // History arrives as plain strings (no per-line tags); infer level
+                // from the text and default the stream to stdout.
+                let to_entries = |lines: Vec<String>| -> Vec<LogEntry> {
+                    lines
+                        .into_iter()
+                        .map(|text| LogEntry {
+                            level: infer_level_text(&text),
+                            stream: LogStream::Stdout,
+                            text,
+                        })
+                        .collect()
+                };
                 if let Some(svc) = service {
                     let service_logs = self.logs.entry(svc).or_default();
                     // Insert history at the beginning
-                    let mut new_logs = lines;
+                    let mut new_logs = to_entries(lines);
                     new_logs.append(service_logs);
                     *service_logs = new_logs;
                 } else {
                     // All logs - store under special key
-                    self.logs.insert("__all__".to_string(), lines);
+                    self.logs.insert("__all__".to_string(), to_entries(lines));
                 }
             }
             _ => {}
@@ -201,6 +251,9 @@ impl App {
             self.current_view = View::Logs(service_name.clone());
             self.log_scroll = 0;
             self.auto_scroll = true;
+            self.log_search.clear();
+            self.log_search_editing = false;
+            self.status_message = None;
 
             // Request log history first
             let get_logs_msg = ClientMessage::GetLogs {
@@ -234,7 +287,7 @@ impl App {
     }
 
     /// Get logs for the current service being viewed
-    pub fn current_logs(&self) -> &[String] {
+    pub fn current_logs(&self) -> &[LogEntry] {
         if let View::Logs(service) = &self.current_view {
             self.logs.get(service).map(|v| v.as_slice()).unwrap_or(&[])
         } else {
@@ -242,10 +295,15 @@ impl App {
         }
     }
 
+    /// Number of log entries for the current service.
+    pub fn current_log_len(&self) -> usize {
+        self.current_logs().len()
+    }
+
     /// Scroll logs up (older)
     pub fn scroll_logs_up(&mut self, amount: usize) {
-        if let View::Logs(service) = &self.current_view {
-            let total_logs = self.logs.get(service).map(|v| v.len()).unwrap_or(0);
+        if let View::Logs(_) = &self.current_view {
+            let total_logs = self.current_log_len();
             self.log_scroll = self
                 .log_scroll
                 .saturating_add(amount)
@@ -264,8 +322,8 @@ impl App {
 
     /// Scroll to top (oldest logs)
     pub fn scroll_logs_to_top(&mut self) {
-        if let View::Logs(service) = &self.current_view {
-            let total_logs = self.logs.get(service).map(|v| v.len()).unwrap_or(0);
+        if let View::Logs(_) = &self.current_view {
+            let total_logs = self.current_log_len();
             self.log_scroll = total_logs.saturating_sub(1);
             self.auto_scroll = false;
         }
@@ -280,6 +338,115 @@ impl App {
     /// Toggle soft-wrapping of long log lines.
     pub fn toggle_wrap(&mut self) {
         self.wrap_logs = !self.wrap_logs;
+    }
+
+    /// The entry index currently anchored at the bottom of the view.
+    fn anchor_index(&self) -> usize {
+        self.current_log_len()
+            .saturating_sub(1)
+            .saturating_sub(self.log_scroll)
+    }
+
+    /// Anchor the view so that entry `idx` sits at the bottom.
+    fn scroll_to_index(&mut self, idx: usize) {
+        let total = self.current_log_len();
+        self.log_scroll = total.saturating_sub(idx + 1);
+        self.auto_scroll = self.log_scroll == 0;
+    }
+
+    /// Enter search-input mode, seeded with the current term.
+    pub fn begin_search(&mut self) {
+        self.log_search_editing = true;
+        self.log_search_buffer = self.log_search.clone();
+    }
+
+    pub fn search_push(&mut self, c: char) {
+        self.log_search_buffer.push(c);
+    }
+
+    pub fn search_backspace(&mut self) {
+        self.log_search_buffer.pop();
+    }
+
+    /// Apply the typed text as the active search term (highlighted in-place) and
+    /// jump to the newest matching line, if any.
+    pub fn search_commit(&mut self) {
+        self.log_search = self.log_search_buffer.trim().to_string();
+        self.log_search_editing = false;
+        if self.log_search.is_empty() {
+            return;
+        }
+        let needle = self.log_search.to_ascii_lowercase();
+        let newest = self
+            .current_logs()
+            .iter()
+            .rposition(|e| e.text.to_ascii_lowercase().contains(&needle));
+        if let Some(idx) = newest {
+            self.scroll_to_index(idx);
+        }
+    }
+
+    /// Leave search-input mode without changing the active term.
+    pub fn search_cancel(&mut self) {
+        self.log_search_editing = false;
+    }
+
+    /// Clear the active search term (removes highlight).
+    pub fn clear_search(&mut self) {
+        self.log_search.clear();
+    }
+
+    /// Jump to the previous (`older`) or next (newer) line matching the search
+    /// term, moving the view to bring it to the bottom.
+    pub fn jump_match(&mut self, older: bool) {
+        if self.log_search.is_empty() {
+            return;
+        }
+        let needle = self.log_search.to_ascii_lowercase();
+        let total = self.current_log_len();
+        if total == 0 {
+            return;
+        }
+        let anchor = self.anchor_index();
+        let found = {
+            let entries = self.current_logs();
+            let hit = |i: usize| entries[i].text.to_ascii_lowercase().contains(&needle);
+            if older {
+                (0..anchor).rev().find(|&i| hit(i))
+            } else {
+                ((anchor + 1)..total).find(|&i| hit(i))
+            }
+        };
+        if let Some(idx) = found {
+            self.scroll_to_index(idx);
+        }
+    }
+
+    /// Write the current service's log lines (ANSI stripped) to a temp file so
+    /// the user can open/grep/copy them outside the TUI. Sets `status_message`.
+    pub fn export_current_logs(&mut self) {
+        let service = match &self.current_view {
+            View::Logs(s) => s.clone(),
+            _ => return,
+        };
+        let mut body = String::new();
+        let mut count = 0;
+        if let Some(entries) = self.logs.get(&service) {
+            for e in entries {
+                body.push_str(&strip_ansi(&e.text));
+                body.push('\n');
+                count += 1;
+            }
+        }
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let path = std::env::temp_dir().join(format!("krill-{}-{}.log", service, ts));
+        self.status_message = Some(match std::fs::write(&path, body) {
+            Ok(()) => format!("exported {} lines → {}", count, path.display()),
+            Err(e) => format!("export failed: {}", e),
+        });
     }
 
     /// Toggle auto-scroll mode

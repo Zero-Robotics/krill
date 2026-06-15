@@ -801,6 +801,8 @@ mod ipc {
         let msg = ServerMessage::LogLine {
             service: "lidar".into(),
             line: "sensor initialized".into(),
+            stream: krill_common::LogStream::Stdout,
+            level: krill_common::LogLevel::Info,
         };
         let json = serde_json::to_string(&msg).unwrap();
         let back: ServerMessage = serde_json::from_str(&json).unwrap();

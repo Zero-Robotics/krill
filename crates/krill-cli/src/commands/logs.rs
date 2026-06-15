@@ -70,7 +70,7 @@ pub async fn execute(args: LogsArgs) -> Result<()> {
             Ok(_) => {
                 if let Ok(msg) = serde_json::from_str::<ServerMessage>(line.trim()) {
                     match msg {
-                        ServerMessage::LogLine { service, line } => {
+                        ServerMessage::LogLine { service, line, .. } => {
                             if args.service.is_none() || args.service.as_ref() == Some(&service) {
                                 println!("[{}] {}", service, line);
                             }

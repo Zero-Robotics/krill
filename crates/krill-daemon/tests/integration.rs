@@ -86,9 +86,9 @@ mod log_store_tests {
         let tmp = TempDir::new().unwrap();
         let store = LogStore::new(Some(tmp.path().to_path_buf())).unwrap();
 
-        store.add_log("svc-a", "line-a-1".to_string()).await;
-        store.add_log("svc-a", "line-a-2".to_string()).await;
-        store.add_log("svc-b", "line-b-1".to_string()).await;
+        store.add_log("svc-a", "line-a-1".to_string(), krill_common::LogLevel::Info).await;
+        store.add_log("svc-a", "line-a-2".to_string(), krill_common::LogLevel::Info).await;
+        store.add_log("svc-b", "line-b-1".to_string(), krill_common::LogLevel::Info).await;
 
         let logs_a = store.get_logs(Some("svc-a"), 100).await;
         assert_eq!(logs_a.len(), 2);
@@ -106,7 +106,7 @@ mod log_store_tests {
         let store = LogStore::new(Some(tmp.path().to_path_buf())).unwrap();
 
         for i in 0..10 {
-            store.add_log("svc-a", format!("line-{}", i)).await;
+            store.add_log("svc-a", format!("line-{}", i), krill_common::LogLevel::Info).await;
         }
 
         // Ask for only 3 lines -- should get the *last* 3 (most recent).
@@ -122,8 +122,8 @@ mod log_store_tests {
         let tmp = TempDir::new().unwrap();
         let store = LogStore::new(Some(tmp.path().to_path_buf())).unwrap();
 
-        store.add_log("svc-a", "hello from a".to_string()).await;
-        store.add_log("svc-b", "hello from b".to_string()).await;
+        store.add_log("svc-a", "hello from a".to_string(), krill_common::LogLevel::Info).await;
+        store.add_log("svc-b", "hello from b".to_string(), krill_common::LogLevel::Info).await;
 
         // Passing None returns logs from all services, prefixed with [service].
         let all = store.get_logs(None, 100).await;

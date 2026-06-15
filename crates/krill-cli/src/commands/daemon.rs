@@ -114,8 +114,9 @@ pub async fn execute(args: DaemonArgs) -> Result<()> {
     // Create event channel
     let (event_tx, mut event_rx) = mpsc::unbounded_channel();
 
-    // Create log channel for service output
-    let (log_tx, mut log_rx) = mpsc::unbounded_channel();
+    // Create log channel for service output. Bounded so a runaway service can't
+    // grow the queue without limit; the orchestrator drops on overflow.
+    let (log_tx, mut log_rx) = mpsc::channel(8192);
 
     // Create command channel for IPC
     let (command_tx, mut command_rx) = mpsc::unbounded_channel();
@@ -197,11 +198,14 @@ pub async fn execute(args: DaemonArgs) -> Result<()> {
     let ipc_server_clone = Arc::clone(&ipc_server);
     let log_store_clone = Arc::clone(&log_store);
     let log_handle = tokio::spawn(async move {
-        while let Some((service, line)) = log_rx.recv().await {
-            // Write to log store (file + memory)
-            log_store_clone.add_log(&service, line.clone()).await;
-            // Broadcast to connected clients
-            ipc_server_clone.broadcast_log(service, line);
+        while let Some(entry) = log_rx.recv().await {
+            // Write to log store (file + memory), tagged with the inferred level.
+            log_store_clone
+                .add_log(&entry.service, entry.text.clone(), entry.level)
+                .await;
+            // Broadcast to connected clients with stream + level.
+            ipc_server_clone
+                .broadcast_log(entry.service, entry.text, entry.stream, entry.level);
         }
     });
 

@@ -1,6 +1,7 @@
 // Krill TUI Library
 
 pub mod app;
+pub mod richtext;
 pub mod ui;
 
 pub use app::App;
@@ -176,16 +177,27 @@ async fn run_app(
 
                 let disks = Disks::new_with_refreshed_list();
 
+                // Report the filesystem mounted at "/". Summing every mount
+                // double-counts on macOS, where APFS exposes several synthetic
+                // volumes that share a single container.
+                let root = std::path::Path::new("/");
                 let (total_used, total_capacity): (u64, u64) = disks
                     .iter()
-                    .map(|disk| {
-                        let used = disk.total_space() - disk.available_space();
-                        (used, disk.total_space())
+                    .find(|d| d.mount_point() == root)
+                    .or_else(|| disks.iter().max_by_key(|d| d.total_space()))
+                    .map(|d| {
+                        (
+                            d.total_space().saturating_sub(d.available_space()),
+                            d.total_space(),
+                        )
                     })
-                    .fold((0, 0), |(u, t), (du, dt)| (u + du, t + dt));
+                    .unwrap_or((0, 0));
 
-                let disk_usage_gb = total_used as f32 / 1024.0 / 1024.0 / 1024.0 / 1024.0;
-                let disk_total_gb = total_capacity as f32 / 1024.0 / 1024.0 / 1024.0 / 1024.0;
+                // sysinfo reports bytes; GiB = 1024^3 (the previous code divided
+                // by 1024^4, i.e. TiB, while labeling the result "GB").
+                const GIB: f32 = 1024.0 * 1024.0 * 1024.0;
+                let disk_usage_gb = total_used as f32 / GIB;
+                let disk_total_gb = total_capacity as f32 / GIB;
 
                 // Update app state directly
                 app.cpu_usage = cpu_usage;
@@ -236,9 +248,29 @@ fn handle_input(app: &mut App, key: KeyEvent) -> Result<bool> {
             KeyCode::Char('S') => app.show_stop_daemon_confirmation(),
             _ => {}
         },
+        app::View::Logs(_) if app.log_search_editing => match key.code {
+            // While typing a search query, keys edit the query.
+            KeyCode::Enter => app.search_commit(),
+            KeyCode::Esc => app.search_cancel(),
+            KeyCode::Backspace => app.search_backspace(),
+            KeyCode::Char(c) => app.search_push(c),
+            _ => {}
+        },
         app::View::Logs(_) => match key.code {
             KeyCode::Char('q') => return Ok(false),
-            KeyCode::Esc => app.back_to_list(),
+            // Esc clears an active search first, then leaves the view.
+            KeyCode::Esc => {
+                if app.log_search.is_empty() {
+                    app.back_to_list();
+                } else {
+                    app.clear_search();
+                }
+            }
+            // Search, jump-to-match, and export
+            KeyCode::Char('/') => app.begin_search(),
+            KeyCode::Char('n') => app.jump_match(true),
+            KeyCode::Char('N') => app.jump_match(false),
+            KeyCode::Char('e') | KeyCode::Char('E') => app.export_current_logs(),
             // Single line scrolling
             KeyCode::Up | KeyCode::Char('k') => app.scroll_logs_up(1),
             KeyCode::Down | KeyCode::Char('j') => app.scroll_logs_down(1),
