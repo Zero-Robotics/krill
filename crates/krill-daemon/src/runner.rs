@@ -190,6 +190,12 @@ impl ServiceRunner {
             command.env(key, value);
         }
 
+        #[cfg(unix)]
+        {
+            // Set up process group
+            command.process_group(0);
+        }
+
         // Spawn process
         let child = command
             .spawn()
@@ -204,17 +210,10 @@ impl ServiceRunner {
         // Set up process group for isolation
         #[cfg(unix)]
         {
-            if let Err(e) = krill_common::setup_process_group(pid) {
-                warn!(
-                    "Failed to set process group for '{}': {}",
-                    self.service_name, e
-                );
-            } else {
-                // Get the PGID
-                if let Ok(pgid) = krill_common::get_process_group(pid) {
-                    self.pgid = Some(pgid);
-                    debug!("Service '{}' process group: {}", self.service_name, pgid);
-                }
+            // Get the PGID
+            if let Ok(pgid) = krill_common::get_process_group(pid) {
+                self.pgid = Some(pgid);
+                debug!("Service '{}' process group: {}", self.service_name, pgid);
             }
         }
 
